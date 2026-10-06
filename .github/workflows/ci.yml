@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "23 4 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Formatting
+        run: test -z "$(gofmt -l .)"
+      - name: Module integrity
+        run: go mod verify
+      - name: Tests
+        run: go test ./...
+      - name: Comparison-tag tests
+        run: go test -tags comparison ./...
+      - name: Race detector
+        run: go test -race ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Vulnerability scan
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+          govulncheck ./...
+      - name: macOS ARM64 cross-build
+        env:
+          GOOS: darwin
+          GOARCH: arm64
+          CGO_ENABLED: "0"
+        run: go build ./...
+      - name: Shell syntax
+        run: bash -n tools/*.sh benchmarks/arena/adapters/*/run.sh
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Tests
+        run: go test ./...

@@ -1,0 +1,6 @@
+{
+  "guild-create-500.json": "sha256:821fdf37b28865fbba1aa1de27724b5df9599656e644da85d938d7b6b4480a4d",
+  "malformed-frame.json": "sha256:de7762921c32b43f7269ebf5fb87ad3dbc6fd5345372c0a0317fb16738f5f07b",
+  "message-create.json": "sha256:51022c40dc2a6b15c8ba7957ae843c52d42cc192b9664221bcaa22441ba08236",
+  "permission-case.json": "sha256:23db62ca473303e92c28bfdf34a00f79603ada3feaa5c38e2ade1bd5363037a6"
+}

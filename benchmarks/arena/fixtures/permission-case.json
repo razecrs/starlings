@@ -1,0 +1,13 @@
+{
+  "channel_id": "800000000000000000",
+  "everyone_deny": "2048",
+  "everyone_permissions": "68608",
+  "expected_permissions": "76800",
+  "guild_id": "41771983423143937",
+  "member_allow": "8192",
+  "member_deny": "1048576",
+  "role_allow": "2048",
+  "role_deny": "8192",
+  "role_permissions": "1056768",
+  "user_id": "700000000000000000"
+}

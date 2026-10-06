@@ -1,0 +1,21 @@
+.env
+.env.*
+!.env.example
+
+*.exe
+*.test
+*.log
+*.prof
+*.pprof
+erl_crash.dump
+
+# Local logo drafts. The published mark lives at assets/starlings-logo.png.
+/assets/logo/
+
+**/__pycache__/
+**/*.pyc
+**/.arena-bin
+**/.classes/
+**/*.class
+benchmarks/arena/adapters/dotnet_dsharpplus/bin/
+benchmarks/arena/adapters/dotnet_dsharpplus/obj/

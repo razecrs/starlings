@@ -1,0 +1,17 @@
+id	language	repository
+crystal_discordcr	Crystal	https://github.com/shardlab/discordcr.git
+dart_nyxx	Dart	https://github.com/nyxx-discord/nyxx.git
+dotnet_dsharpplus	C#	https://github.com/DSharpPlus/DSharpPlus.git
+elixir_nostrum	Elixir	https://github.com/Kraigie/nostrum.git
+go_discordgo	Go	https://github.com/bwmarrin/discordgo.git
+java_discord4j	Java	https://github.com/Discord4J/Discord4J.git
+java_jda	Java	https://github.com/discord-jda/JDA.git
+js_discord-js	JavaScript	https://github.com/discordjs/discord.js.git
+kotlin_kord	Kotlin	https://github.com/kordlib/kord.git
+lua_discordia	LuaJIT	https://github.com/SinisterRectus/Discordia.git
+nim_dimscord	Nim	https://github.com/krisppurg/dimscord.git
+php_discord-php	PHP	https://github.com/discord-php/DiscordPHP.git
+php_restcord	PHP	https://github.com/restcord/restcord.git
+python_discord-py	Python	https://github.com/Rapptz/discord.py.git
+ruby_discordrb	Ruby	https://github.com/shardlab/discordrb.git
+scala_ackcord	Scala	https://github.com/Katrix/AckCord.git
