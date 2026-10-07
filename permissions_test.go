@@ -32,3 +32,14 @@ func TestHighPermissionString(t *testing.T) {
 		t.Fatalf("String() = %q, want %q", got, want)
 	}
 }
+
+func TestPermissionNamesAndMissing(t *testing.T) {
+	have := PermissionViewChannel | PermissionSendMessages
+	want := have | PermissionManageMessages
+	if missing := have.Missing(want); missing != PermissionManageMessages {
+		t.Fatalf("Missing() = %d", missing)
+	}
+	if got := have.HumanString(); got != "View Channel, Send Messages" {
+		t.Fatalf("HumanString() = %q", got)
+	}
+}

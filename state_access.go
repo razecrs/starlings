@@ -1,6 +1,9 @@
 package starlings
 
-import "sort"
+import (
+	"sort"
+	"time"
+)
 
 // StateStats is a cheap count-only snapshot of cache occupancy.
 type StateStats struct {
@@ -9,7 +12,15 @@ type StateStats struct {
 	VoiceStates, Presences, Messages, MessageChannels int
 }
 
-func (s *State) Guild(id Snowflake) (Guild, bool) {
+func (s *State) Guild(id Snowflake) (value Guild, ok bool) {
+	if s.guard != nil {
+		started := time.Now()
+		defer func() {
+			items := len(value.Channels) + len(value.Threads) + len(value.Members) + len(value.Roles) + len(value.Emojis) + len(value.Stickers) + len(value.VoiceStates) + len(value.Presences)
+			s.guard.cacheUse("guilds", "channels", "members", "roles", "emojis", "stickers", "voice_states", "presences")
+			s.guard.cacheAccess("guilds.all", ok, items, time.Since(started))
+		}()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.guildLocked(id)
@@ -91,84 +102,129 @@ func (s *State) guildLocked(id Snowflake) (Guild, bool) {
 	return cloneGuild(v), true
 }
 
-func (s *State) Channel(id Snowflake) (Channel, bool) {
+func (s *State) Channel(id Snowflake) (value Channel, ok bool) {
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("channels", ok, 1, time.Since(started)) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	v, ok := s.channels[id]
-	return cloneChannel(v), ok
+	value, ok = s.channels[id]
+	return cloneChannel(value), ok
 }
 
-func (s *State) Member(guildID, userID Snowflake) (Member, bool) {
+func (s *State) Member(guildID, userID Snowflake) (value Member, ok bool) {
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("members", ok, 1, time.Since(started)) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	v, ok := s.members[guildID][userID]
-	return cloneMember(v), ok
+	value, ok = s.members[guildID][userID]
+	return cloneMember(value), ok
 }
 
-func (s *State) User(id Snowflake) (User, bool) {
+func (s *State) User(id Snowflake) (value User, ok bool) {
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("users", ok, 1, time.Since(started)) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	v, ok := s.users[id]
-	return cloneUser(v), ok
+	value, ok = s.users[id]
+	return cloneUser(value), ok
 }
 
-func (s *State) Role(guildID, roleID Snowflake) (Role, bool) {
+func (s *State) Role(guildID, roleID Snowflake) (value Role, ok bool) {
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("roles", ok, 1, time.Since(started)) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	v, ok := s.roles[guildID][roleID]
-	return cloneRole(v), ok
+	value, ok = s.roles[guildID][roleID]
+	return cloneRole(value), ok
 }
 
-func (s *State) Emoji(guildID, emojiID Snowflake) (GuildEmoji, bool) {
+func (s *State) Emoji(guildID, emojiID Snowflake) (value GuildEmoji, ok bool) {
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("emojis", ok, 1, time.Since(started)) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	v, ok := s.emojis[guildID][emojiID]
-	return cloneGuildEmoji(v), ok
+	value, ok = s.emojis[guildID][emojiID]
+	return cloneGuildEmoji(value), ok
 }
 
-func (s *State) Sticker(guildID, stickerID Snowflake) (Sticker, bool) {
+func (s *State) Sticker(guildID, stickerID Snowflake) (value Sticker, ok bool) {
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("stickers", ok, 1, time.Since(started)) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	v, ok := s.stickers[guildID][stickerID]
-	return cloneSticker(v), ok
+	value, ok = s.stickers[guildID][stickerID]
+	return cloneSticker(value), ok
 }
 
-func (s *State) ThreadMember(threadID, userID Snowflake) (ThreadMember, bool) {
+func (s *State) ThreadMember(threadID, userID Snowflake) (value ThreadMember, ok bool) {
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("thread_members", ok, 1, time.Since(started)) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	v, ok := s.threadMembers[threadID][userID]
-	return cloneThreadMember(v), ok
+	value, ok = s.threadMembers[threadID][userID]
+	return cloneThreadMember(value), ok
 }
 
-func (s *State) VoiceState(guildID, userID Snowflake) (VoiceState, bool) {
+func (s *State) VoiceState(guildID, userID Snowflake) (value VoiceState, ok bool) {
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("voice_states", ok, 1, time.Since(started)) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	v, ok := s.voiceStates[guildID][userID]
-	return cloneVoiceState(v), ok
+	value, ok = s.voiceStates[guildID][userID]
+	return cloneVoiceState(value), ok
 }
 
-func (s *State) Presence(guildID, userID Snowflake) (PresenceUpdate, bool) {
+func (s *State) Presence(guildID, userID Snowflake) (value PresenceUpdate, ok bool) {
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("presences", ok, 1, time.Since(started)) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	v, ok := s.presences[guildID][userID]
-	return clonePresence(v), ok
+	value, ok = s.presences[guildID][userID]
+	return clonePresence(value), ok
 }
 
-func (s *State) Message(channelID, messageID Snowflake) (Message, bool) {
+func (s *State) Message(channelID, messageID Snowflake) (value Message, ok bool) {
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("messages", ok, 1, time.Since(started)) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	cache := s.messages[channelID]
 	if cache == nil {
 		return Message{}, false
 	}
-	v, ok := cache.items[messageID]
-	return cloneMessage(v), ok
+	value, ok = cache.items[messageID]
+	return cloneMessage(value), ok
 }
 
 func (s *State) Guilds() []Guild {
+	var out []Guild
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("guilds.all", len(out) > 0, len(out), time.Since(started)) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]Guild, 0, len(s.guilds))
+	out = make([]Guild, 0, len(s.guilds))
 	for id := range s.guilds {
 		v, _ := s.guildLocked(id)
 		out = append(out, v)
@@ -178,9 +234,14 @@ func (s *State) Guilds() []Guild {
 }
 
 func (s *State) Channels() []Channel {
+	var out []Channel
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("channels.all", len(out) > 0, len(out), time.Since(started)) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]Channel, 0, len(s.channels))
+	out = make([]Channel, 0, len(s.channels))
 	for _, v := range s.channels {
 		out = append(out, cloneChannel(v))
 	}
@@ -190,9 +251,14 @@ func (s *State) Channels() []Channel {
 
 // Users returns snapshots of every cached user.
 func (s *State) Users() []User {
+	var out []User
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("users.all", len(out) > 0, len(out), time.Since(started)) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]User, 0, len(s.users))
+	out = make([]User, 0, len(s.users))
 	for _, v := range s.users {
 		out = append(out, cloneUser(v))
 	}
@@ -201,9 +267,14 @@ func (s *State) Users() []User {
 }
 
 func (s *State) Members(guildID Snowflake) []Member {
+	var out []Member
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("members.all", len(out) > 0, len(out), time.Since(started)) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]Member, 0, len(s.members[guildID]))
+	out = make([]Member, 0, len(s.members[guildID]))
 	for _, v := range s.members[guildID] {
 		out = append(out, cloneMember(v))
 	}
@@ -212,9 +283,14 @@ func (s *State) Members(guildID Snowflake) []Member {
 }
 
 func (s *State) Roles(guildID Snowflake) []Role {
+	var out []Role
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("roles.all", len(out) > 0, len(out), time.Since(started)) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]Role, 0, len(s.roles[guildID]))
+	out = make([]Role, 0, len(s.roles[guildID]))
 	for _, v := range s.roles[guildID] {
 		out = append(out, cloneRole(v))
 	}
@@ -227,10 +303,14 @@ func (s *State) Roles(guildID Snowflake) []Role {
 	return out
 }
 
-func (s *State) Emojis(guildID Snowflake) []GuildEmoji {
+func (s *State) Emojis(guildID Snowflake) (out []GuildEmoji) {
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("emojis.all", len(out) > 0, len(out), time.Since(started)) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]GuildEmoji, 0, len(s.emojis[guildID]))
+	out = make([]GuildEmoji, 0, len(s.emojis[guildID]))
 	for _, v := range s.emojis[guildID] {
 		out = append(out, cloneGuildEmoji(v))
 	}
@@ -238,10 +318,14 @@ func (s *State) Emojis(guildID Snowflake) []GuildEmoji {
 	return out
 }
 
-func (s *State) Stickers(guildID Snowflake) []Sticker {
+func (s *State) Stickers(guildID Snowflake) (out []Sticker) {
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("stickers.all", len(out) > 0, len(out), time.Since(started)) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]Sticker, 0, len(s.stickers[guildID]))
+	out = make([]Sticker, 0, len(s.stickers[guildID]))
 	for _, v := range s.stickers[guildID] {
 		out = append(out, cloneSticker(v))
 	}
@@ -249,10 +333,14 @@ func (s *State) Stickers(guildID Snowflake) []Sticker {
 	return out
 }
 
-func (s *State) ThreadMembers(threadID Snowflake) []ThreadMember {
+func (s *State) ThreadMembers(threadID Snowflake) (out []ThreadMember) {
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("thread_members.all", len(out) > 0, len(out), time.Since(started)) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]ThreadMember, 0, len(s.threadMembers[threadID]))
+	out = make([]ThreadMember, 0, len(s.threadMembers[threadID]))
 	for _, v := range s.threadMembers[threadID] {
 		out = append(out, cloneThreadMember(v))
 	}
@@ -260,10 +348,14 @@ func (s *State) ThreadMembers(threadID Snowflake) []ThreadMember {
 	return out
 }
 
-func (s *State) VoiceStates(guildID Snowflake) []VoiceState {
+func (s *State) VoiceStates(guildID Snowflake) (out []VoiceState) {
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("voice_states.all", len(out) > 0, len(out), time.Since(started)) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]VoiceState, 0, len(s.voiceStates[guildID]))
+	out = make([]VoiceState, 0, len(s.voiceStates[guildID]))
 	for _, v := range s.voiceStates[guildID] {
 		out = append(out, cloneVoiceState(v))
 	}
@@ -272,9 +364,14 @@ func (s *State) VoiceStates(guildID Snowflake) []VoiceState {
 }
 
 func (s *State) Presences(guildID Snowflake) []PresenceUpdate {
+	var out []PresenceUpdate
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("presences.all", len(out) > 0, len(out), time.Since(started)) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]PresenceUpdate, 0, len(s.presences[guildID]))
+	out = make([]PresenceUpdate, 0, len(s.presences[guildID]))
 	for _, v := range s.presences[guildID] {
 		out = append(out, clonePresence(v))
 	}
@@ -283,14 +380,18 @@ func (s *State) Presences(guildID Snowflake) []PresenceUpdate {
 }
 
 // Messages returns a channel's cached messages oldest first.
-func (s *State) Messages(channelID Snowflake) []Message {
+func (s *State) Messages(channelID Snowflake) (out []Message) {
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("messages.all", len(out) > 0, len(out), time.Since(started)) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	cache := s.messages[channelID]
 	if cache == nil {
 		return nil
 	}
-	out := make([]Message, 0, len(cache.order))
+	out = make([]Message, 0, len(cache.order))
 	for _, id := range cache.order {
 		if v, ok := cache.items[id]; ok {
 			out = append(out, cloneMessage(v))

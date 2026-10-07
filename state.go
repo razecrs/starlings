@@ -54,6 +54,11 @@ func DefaultStateConfig() StateConfig {
 	}
 }
 
+// MinimalStateConfig disables resource retention while leaving automatic
+// mode selected. Use it for stateless interaction bots, workers, and prefix
+// bots that only react to the event currently being handled.
+func MinimalStateConfig() StateConfig { return StateConfig{Mode: StateAutomatic} }
+
 // WithStateCache replaces the default cache configuration.
 func WithStateCache(config StateConfig) Option {
 	return func(c *Client) { c.State = newStateWithConfig(config) }

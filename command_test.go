@@ -107,6 +107,26 @@ func TestCommandsShareOneHandler(t *testing.T) {
 	}
 }
 
+func TestCommandAliasesAreSortedAndCommandPresetHasIntents(t *testing.T) {
+	c := NewCommandBot("token", WithLogger(discardLogger()))
+	called := 0
+	c.Command("zeta", func(*MessageCreate, []string) { called++ }).Aliases("Z", "alpha")
+	deliver(t, c, frameWithContent("!z", false))
+	if called != 1 {
+		t.Fatalf("alias called %d times", called)
+	}
+	if got := strings.Join(c.Commands(), ","); got != "alpha,z,zeta" {
+		t.Fatalf("Commands() = %q", got)
+	}
+	want := IntentGuildMessages | IntentDirectMessages | IntentMessageContent
+	if c.intents&want != want {
+		t.Fatalf("NewCommandBot intents = %d, want %d", c.intents, want)
+	}
+	if config := c.State.Config(); config != MinimalStateConfig() {
+		t.Fatalf("NewCommandBot state = %+v", config)
+	}
+}
+
 func TestIntentWarnings(t *testing.T) {
 	t.Run("missing event intent", func(t *testing.T) {
 		c := New("token", WithLogger(discardLogger())) // no intents at all

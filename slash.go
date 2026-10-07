@@ -2,7 +2,11 @@ package starlings
 
 import (
 	"context"
+	"maps"
+	"slices"
+	"sort"
 	"strings"
+	"time"
 )
 
 // SlashFunc handles one slash command invocation.
@@ -11,8 +15,25 @@ type SlashFunc func(i *InteractionCreate)
 // slashEntry pairs a command's definition with its handler, so one call can
 // both declare the command to Discord and say what it does.
 type slashEntry struct {
-	def ApplicationCommand
-	fn  SlashFunc
+	def          ApplicationCommand
+	fn           SlashFunc
+	autocomplete SlashFunc
+	task         TaskFunc
+	private      bool
+	timeout      time.Duration
+}
+
+type commandKey struct {
+	kind ApplicationCommandType
+	name string
+}
+
+// SlashRoute is the optional fluent configuration returned by Slash and
+// SlashCommand. Ignoring it is fine; keeping it makes common command policy
+// readable without expanding back into a full ApplicationCommand literal.
+type SlashRoute struct {
+	client *Client
+	key    commandKey
 }
 
 // Slash registers a slash command and its handler in one step:
@@ -29,8 +50,8 @@ type slashEntry struct {
 // This only registers it in the program. Call SyncCommands once connected to
 // publish the definitions to Discord, which is what makes them appear in the
 // client.
-func (c *Client) Slash(name, description string, fn SlashFunc, options ...CommandOption) {
-	c.SlashCommand(ApplicationCommand{
+func (c *Client) Slash(name, description string, fn SlashFunc, options ...CommandOption) *SlashRoute {
+	return c.SlashCommand(ApplicationCommand{
 		Type:        CommandChat,
 		Name:        name,
 		Description: description,
@@ -41,12 +62,20 @@ func (c *Client) Slash(name, description string, fn SlashFunc, options ...Comman
 // SlashCommand is Slash with a fully specified command, for the cases the
 // shorthand does not cover - context-menu commands, permission gates,
 // localisations.
-func (c *Client) SlashCommand(cmd ApplicationCommand, fn SlashFunc) {
+func (c *Client) SlashCommand(cmd ApplicationCommand, fn SlashFunc) *SlashRoute {
+	c = c.rootClient()
+	if cmd.Type == 0 {
+		cmd.Type = CommandChat
+	}
+	key := commandKey{cmd.Type, cmd.Name}
+	if cmd.Type == CommandChat {
+		key.name = strings.ToLower(cmd.Name)
+	}
 	c.slashMu.Lock()
 	if c.slashes == nil {
-		c.slashes = make(map[string]slashEntry)
+		c.slashes = make(map[commandKey]slashEntry)
 	}
-	c.slashes[strings.ToLower(cmd.Name)] = slashEntry{def: cmd, fn: fn}
+	c.slashes[key] = slashEntry{def: cloneCommand(cmd), fn: fn}
 
 	hook := !c.slashHooked
 	c.slashHooked = true
@@ -57,22 +86,101 @@ func (c *Client) SlashCommand(cmd ApplicationCommand, fn SlashFunc) {
 	if hook {
 		On(c, c.routeInteraction)
 	}
+	return &SlashRoute{client: c, key: key}
+}
+
+// Permissions limits the command to members with every supplied permission.
+// Discord performs the visibility check before Starlings receives the command.
+func (r *SlashRoute) Permissions(permissions Permissions) *SlashRoute {
+	return r.update(func(entry *slashEntry) {
+		value := permissions
+		entry.def.DefaultMemberPermissions = &value
+	})
+}
+
+// Contexts selects where Discord offers the command.
+func (r *SlashRoute) Contexts(contexts ...InteractionContextType) *SlashRoute {
+	return r.update(func(entry *slashEntry) {
+		entry.def.Contexts = append([]InteractionContextType(nil), contexts...)
+	})
+}
+
+// GuildOnly is shorthand for Contexts(InteractionContextGuild).
+func (r *SlashRoute) GuildOnly() *SlashRoute {
+	return r.Contexts(InteractionContextGuild)
+}
+
+// InstallTypes selects whether a command belongs to guild installs, user
+// installs, or both.
+func (r *SlashRoute) InstallTypes(types ...ApplicationIntegrationType) *SlashRoute {
+	return r.update(func(entry *slashEntry) {
+		entry.def.IntegrationTypes = append([]ApplicationIntegrationType(nil), types...)
+	})
+}
+
+// Autocomplete registers the command's autocomplete handler separately from
+// its execution handler. This separation prevents command side effects from
+// running while a user is merely typing an option.
+func (r *SlashRoute) Autocomplete(fn SlashFunc) *SlashRoute {
+	return r.update(func(entry *slashEntry) { entry.autocomplete = fn })
+}
+
+func (r *SlashRoute) update(fn func(*slashEntry)) *SlashRoute {
+	if r == nil || r.client == nil {
+		return r
+	}
+	r.client.slashMu.Lock()
+	entry, ok := r.client.slashes[r.key]
+	if ok {
+		fn(&entry)
+		r.client.slashes[r.key] = entry
+	}
+	r.client.slashMu.Unlock()
+	return r
 }
 
 // routeInteraction dispatches an interaction to the handler registered for its
 // command name.
 func (c *Client) routeInteraction(i *InteractionCreate) {
-	switch i.Type {
-	case InteractionApplicationCommand, InteractionCommandAutocomplete:
-	default:
+	c = c.rootClient()
+	if i.Type == InteractionMessageComponent || i.Type == InteractionModalSubmit {
+		c.slashMu.RLock()
+		handler := c.components[componentKey{i.Type, i.Data.CustomID}]
+		c.slashMu.RUnlock()
+		if handler.fn != nil {
+			handler.fn(i)
+		}
+		return
+	}
+	if i.Type != InteractionApplicationCommand && i.Type != InteractionCommandAutocomplete {
 		return // components and modals are routed by custom ID, not name
 	}
 
+	kind := ApplicationCommandType(i.Data.Type)
+	if kind == 0 {
+		kind = CommandChat
+	}
+	key := commandKey{kind, i.Data.Name}
+	if kind == CommandChat {
+		key.name = strings.ToLower(key.name)
+	}
 	c.slashMu.RLock()
-	entry, ok := c.slashes[strings.ToLower(i.Data.Name)]
+	entry, ok := c.slashes[key]
+	runner := c.tasks
 	c.slashMu.RUnlock()
 
-	if ok {
+	if !ok {
+		return
+	}
+	if i.Type == InteractionCommandAutocomplete {
+		if entry.autocomplete != nil {
+			entry.autocomplete(i)
+		}
+		return
+	}
+	if entry.task != nil {
+		c.runTask(runner, entry, i)
+	} else if entry.fn != nil {
 		entry.fn(i)
 	}
 }
@@ -80,14 +188,58 @@ func (c *Client) routeInteraction(i *InteractionCreate) {
 // SlashDefinitions returns the registered command definitions, in no
 // particular order.
 func (c *Client) SlashDefinitions() []ApplicationCommand {
+	c = c.rootClient()
 	c.slashMu.RLock()
 	defer c.slashMu.RUnlock()
 
 	defs := make([]ApplicationCommand, 0, len(c.slashes))
 	for _, e := range c.slashes {
-		defs = append(defs, e.def)
+		defs = append(defs, cloneCommand(e.def))
 	}
+	sort.Slice(defs, func(i, j int) bool {
+		if defs[i].Type != defs[j].Type {
+			return defs[i].Type < defs[j].Type
+		}
+		return defs[i].Name < defs[j].Name
+	})
 	return defs
+}
+
+func cloneCommand(value ApplicationCommand) ApplicationCommand {
+	value.NameLocalizations = maps.Clone(value.NameLocalizations)
+	value.DescriptionLocalizations = maps.Clone(value.DescriptionLocalizations)
+	value.Options = cloneCommandOptions(value.Options)
+	value.Contexts = slices.Clone(value.Contexts)
+	value.IntegrationTypes = slices.Clone(value.IntegrationTypes)
+	value.DefaultMemberPermissions = cloneRef(value.DefaultMemberPermissions)
+	value.DMPermission = cloneRef(value.DMPermission)
+	value.DefaultPermission = cloneRef(value.DefaultPermission)
+	return value
+}
+
+func cloneRef[T any](value *T) *T {
+	if value == nil {
+		return nil
+	}
+	return Ref(*value)
+}
+
+func cloneCommandOptions(values []CommandOption) []CommandOption {
+	out := slices.Clone(values)
+	for n := range out {
+		v := &out[n]
+		v.NameLocalizations = maps.Clone(v.NameLocalizations)
+		v.DescriptionLocalizations = maps.Clone(v.DescriptionLocalizations)
+		v.Options = cloneCommandOptions(v.Options)
+		v.ChannelTypes = slices.Clone(v.ChannelTypes)
+		v.Choices = slices.Clone(v.Choices)
+		for j := range v.Choices {
+			v.Choices[j].NameLocalizations = maps.Clone(v.Choices[j].NameLocalizations)
+		}
+		v.MinValue, v.MaxValue = cloneRef(v.MinValue), cloneRef(v.MaxValue)
+		v.MinLength, v.MaxLength = cloneRef(v.MinLength), cloneRef(v.MaxLength)
+	}
+	return out
 }
 
 // SyncCommands publishes every registered slash command to Discord, replacing

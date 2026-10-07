@@ -23,14 +23,9 @@ func main() {
 		log.Fatal("set DISCORD_TOKEN first - get one from discord.com/developers/applications")
 	}
 
-	// MessageContent is privileged and must also be enabled in the developer
-	// portal. Starlings warns at startup if this handler cannot receive content.
-	bot := starlings.New(token,
-		starlings.WithIntents(
-			starlings.IntentGuilds|
-				starlings.IntentGuildMessages|
-				starlings.IntentMessageContent,
-		),
+	// NewCommandBot selects the intents prefix commands need. MessageContent
+	// must still be enabled in the developer portal.
+	bot := starlings.NewCommandBot(token,
 		starlings.WithStatus(starlings.StatusOnline, starlings.Playing("with starlings")),
 	)
 

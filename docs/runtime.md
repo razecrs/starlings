@@ -27,6 +27,26 @@ Starlings skips a dispatch payload only when no application handler and no enabl
 
 Startup warnings identify common dead configurations, such as a `MessageCreate` handler without guild/direct message intents or prefix commands without Message Content.
 
+## Loading complete member lists
+
+READY and `GuildCreate` are not guaranteed to contain every member of a large
+guild. With the Guild Members intent enabled, request the remaining chunks:
+
+```go
+if err := bot.RequestAllMembers(ctx, guildID, "startup-members"); err != nil {
+	log.Print(err)
+}
+
+bot.On(func(chunk *starlings.GuildMembersChunk) {
+	log.Printf("received chunk %d/%d", chunk.ChunkIndex+1, chunk.ChunkCount)
+})
+```
+
+The automatic state cache consumes each chunk before the application handler.
+Use `RequestMembers` for a name prefix or up to 100 exact user IDs. A query of
+`""` with limit `0` means every member; `RequestAllMembers` builds that wire
+shape for you.
+
 ## Dispatch ordering
 
 State maintenance runs before application handlers in automatic mode. Handlers for one event run in registration order and synchronously by default. This gives deterministic snapshots and natural backpressure, but a blocking handler delays later dispatches.
@@ -52,7 +72,7 @@ Every process must use the same total count, and each shard ID must be unique in
 
 ```go
 stop := bot.OnRaw(func(event *starlings.RawEvent) {
-	log.Printf("%s seq=%d", event.Name, event.Sequence)
+	log.Printf("gateway event %s", event.Name)
 })
 defer stop()
 

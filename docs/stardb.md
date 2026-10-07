@@ -34,6 +34,23 @@ err = stardb.Save(ctx, db, "guild:123", GuildSettings{Prefix: "!"})
 settings, err := stardb.Load[GuildSettings](ctx, db, "guild:123")
 ```
 
+Use `Update` for read-modify-write operations so concurrent commands cannot
+silently overwrite each other:
+
+```go
+settings, err = stardb.Update(ctx, db, "guild:123", GuildSettings{},
+    func(value *GuildSettings) error {
+        value.CommandsRun++
+        return nil
+    })
+```
+
+Local files serialize the operation inside the process. SQL uses a conditional
+compare-and-swap, and Firebase uses ETags with bounded conflict retries. The
+callback can run more than once on a contended remote value, so it must only
+change the supplied value and must not send messages or perform other external
+side effects. Backends that cannot promise atomicity return `ErrNotAtomic`.
+
 Change only the constructor for CSV:
 
 ```go
@@ -169,7 +186,6 @@ stardb.WithLimits(stardb.Limits{
 ```
 
 Remote stores use a 15-second client timeout by default. Production calls
-should also carry shorter context deadlines. Automatic write retries are
-intentionally absent: retry policy depends on application idempotency. A
-`RemoteError` reports whether a failure is temporary without leaking the
-server response.
+should also carry shorter context deadlines. Ordinary writes are not retried;
+only `Update` retries a detected compare-and-swap conflict. A `RemoteError`
+reports whether a failure is temporary without leaking the server response.

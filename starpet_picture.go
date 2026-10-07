@@ -2,7 +2,6 @@ package starlings
 
 import (
 	"bytes"
-	_ "embed"
 	"fmt"
 	"image"
 	"image/color"
@@ -11,15 +10,6 @@ import (
 	"sync"
 	"time"
 )
-
-//go:embed assets/starpet-luma.png
-var starPetLumaPNG []byte
-
-//go:embed assets/starpet-comet.png
-var starPetCometPNG []byte
-
-//go:embed assets/starpet-nebula.png
-var starPetNebulaPNG []byte
 
 // StarlogSpriteSheet describes pictured Star Pet animation frames. PNG remains
 // portable and embeddable; Starlog decodes it once and renders it directly to
@@ -62,6 +52,9 @@ func NewStarlogSpriteSheet(png []byte, columns, rows, width int) *StarlogSpriteS
 }
 
 func newBuiltInSpriteSheet(png []byte) *StarlogSpriteSheet {
+	if len(png) == 0 {
+		return nil
+	}
 	sheet := NewStarlogSpriteSheet(png, 4, 3, 22)
 	sheet.Calm = []int{0, 1, 2, 3}
 	sheet.Build = []int{4, 5, 6, 7}

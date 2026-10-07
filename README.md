@@ -5,8 +5,7 @@
 Starlings is a Discord library for Go. It keeps the common bot code short without hiding the gateway, state, voice, or REST API when you need control.
 
 ```go
-bot := starlings.New(os.Getenv("DISCORD_TOKEN"),
-	starlings.WithIntents(starlings.IntentGuildMessages|starlings.IntentMessageContent))
+bot := starlings.NewCommandBot(os.Getenv("DISCORD_TOKEN"))
 
 bot.Command("ping", func(m *starlings.MessageCreate, _ []string) {
 	m.Reply("pong")
@@ -46,6 +45,11 @@ bot.Command("say", func(m *starlings.MessageCreate, args []string) {
 })
 ```
 
+`NewCommandBot` selects the three intents prefix commands need and skips the
+resource cache they usually do not. It is only a preset: options can replace
+both choices, or use `New` for complete state. Message Content must still be
+enabled in Discord's developer portal.
+
 Typed handlers infer the event from the argument:
 
 ```go
@@ -72,6 +76,9 @@ bot.On(func(*starlings.Ready) {
 ```
 
 They can arrive through the gateway or a verified HTTP endpoint. `InteractionHandler` is a normal `net/http` handler; `VerifyInteraction` is available when the application owns request routing.
+
+For a small bot, `WithCommandSync(guildID)` publishes registered commands once
+after READY. Leave it out when deployment code should control command changes.
 
 ## What is covered
 
@@ -165,6 +172,12 @@ defer db.Close()
 
 err = stardb.Save(ctx, db, "guild:"+guildID.String(), settings)
 settings, err := stardb.Load[GuildSettings](ctx, db, "guild:"+guildID.String())
+
+settings, err = stardb.Update(ctx, db, "guild:"+guildID.String(), GuildSettings{},
+	func(value *GuildSettings) error {
+		value.Prefix = "?"
+		return nil
+	})
 ```
 
 The same `Store` contract covers atomic JSON and CSV, driver-neutral SQL, Firebase Realtime Database, and Supabase. It includes strict size limits, optional authenticated encryption, parameterised SQL, HTTPS enforcement for hosted backends, and credential-safe logging. See [the StarDB guide](docs/stardb.md).
@@ -202,6 +215,7 @@ Handlers are synchronous and ordered by default. A slow handler therefore delays
 
 ## Documentation
 
+- [v0.1.1 changes](CHANGELOG.md)
 - [Documentation index](docs/README.md)
 - [Getting started](docs/getting-started.md)
 - [Interactions](docs/interactions.md)
@@ -223,6 +237,7 @@ Handlers are synchronous and ordered by default. A slow handler therefore delays
 
 ## License
 
-Starlings is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE).
+Starlings is licensed under the [MIT License](LICENSE).
 
-For a commercial license (using Starlings in closed-source products or services without the AGPL terms), contact raze.crs@proton.me.
+Use it in anything, including closed-source and commercial work. The only
+condition is that you keep the copyright notice.

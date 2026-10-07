@@ -4,6 +4,7 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"sync/atomic"
+	"time"
 )
 
 // RawEvent exposes the untouched data object from any gateway dispatch. Data
@@ -190,10 +191,12 @@ func registerEvent[E Event](c *Client, h func(*E), internal bool) func() {
 				b.bind(c)
 			}
 			for i, f := range typed {
-				if i < internalCount || !c.asyncEvents {
+				if i < internalCount {
 					f(e)
+				} else if !c.asyncEvents {
+					invokeApplicationHandler(c, name, f, e)
 				} else {
-					go f(e)
+					go invokeApplicationHandler(c, name, f, e)
 				}
 			}
 		},
@@ -217,6 +220,16 @@ func registerEvent[E Event](c *Client, h func(*E), internal bool) func() {
 			removeEvent[E](c, name, id)
 		}
 	}
+}
+
+func invokeApplicationHandler[E Event](c *Client, name string, handler func(*E), event *E) {
+	if c.guard == nil {
+		handler(event)
+		return
+	}
+	started := time.Now()
+	handler(event)
+	c.guard.observe("handler."+name, GuardApplication, time.Since(started), nil)
 }
 
 func removeEvent[E Event](c *Client, name string, id uint64) {
@@ -270,10 +283,12 @@ func removeEvent[E Event](c *Client, name string, id uint64) {
 				b.bind(c)
 			}
 			for i, f := range typed {
-				if i < internalCount || !c.asyncEvents {
+				if i < internalCount {
 					f(e)
+				} else if !c.asyncEvents {
+					invokeApplicationHandler(c, name, f, e)
 				} else {
-					go f(e)
+					go invokeApplicationHandler(c, name, f, e)
 				}
 			}
 		}}

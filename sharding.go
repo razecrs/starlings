@@ -86,8 +86,9 @@ func (c *Client) makeShards(count int, gatewayURL string) []*Client {
 	shards[0] = c
 	for id := 1; id < count; id++ {
 		child := &Client{
-			token: c.token, userToken: c.userToken, id: c.id,
+			token: c.token, id: c.id,
 			intents: c.intents, log: c.log, rest: c.rest,
+			asyncEvents: c.asyncEvents, guard: c.guard,
 			shard: [2]int{id, count}, compress: c.compress,
 			gatewayBase: gatewayURL, initialState: c.initialState,
 			State: c.State, prefix: c.prefix,

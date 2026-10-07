@@ -91,6 +91,13 @@ func TestFirebaseEndToEnd(t *testing.T) {
 	if err := store.Get(context.Background(), "guild-1", &got); err != nil || got.Name != want.Name {
 		t.Fatalf("got=%#v err=%v", got, err)
 	}
+	updated, err := Update(context.Background(), store, "guild-1", testValue{}, func(value *testValue) error {
+		value.Count++
+		return nil
+	})
+	if err != nil || updated.Count != 4 {
+		t.Fatalf("updated=%#v err=%v", updated, err)
+	}
 	keys, err := store.Keys(context.Background())
 	if err != nil || strings.Join(keys, ",") != "guild-1" {
 		t.Fatalf("keys=%v err=%v", keys, err)

@@ -1,6 +1,7 @@
 package stardb
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -158,6 +159,90 @@ func (s *SQLStore) Put(ctx context.Context, key string, source any) error {
 	}
 	s.cfg.log(ctx, slog.LevelDebug, "stardb put", "sql", key)
 	return nil
+}
+
+func (s *SQLStore) update(ctx context.Context, key string, destination any, reset func(bool) error, change func() error) error {
+	if err := s.cfg.validateKey(key); err != nil {
+		return err
+	}
+	if err := s.lock(ctx); err != nil {
+		return err
+	}
+	defer s.mu.RUnlock()
+	keyColumn, valueColumn := "key", "value"
+	if s.dialect == SQLMySQL {
+		keyColumn, valueColumn = "`key`", "`value`"
+	}
+	selectValue := "SELECT " + valueColumn + " FROM " + s.quoted + " WHERE " + keyColumn + " = " + s.placeholder(1)
+	const attempts = 8
+	for attempt := 0; attempt < attempts; attempt++ {
+		var previous []byte
+		err := s.db.QueryRowContext(ctx, selectValue, key).Scan(&previous)
+		existed := err == nil
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return sqlFailure("read for update", err)
+		}
+		if err := reset(existed); err != nil {
+			return err
+		}
+		if existed {
+			if int64(len(previous)) > s.cfg.limits.MaxValueBytes+1024 {
+				return ErrTooLarge
+			}
+			var current blob
+			if err := json.Unmarshal(previous, &current); err != nil {
+				return fmt.Errorf("stardb: decode SQL record: %w", err)
+			}
+			if err := s.cfg.decode(key, current, destination); err != nil {
+				return err
+			}
+		}
+		if err := change(); err != nil {
+			return err
+		}
+		next, err := s.cfg.encode(key, destination)
+		if err != nil {
+			return err
+		}
+		packed, err := json.Marshal(next)
+		if err != nil {
+			return fmt.Errorf("stardb: encode SQL record: %w", err)
+		}
+		var result sql.Result
+		if existed {
+			if bytes.Equal(previous, packed) {
+				return ctx.Err() // linearizes at the read; no write is needed
+			}
+			statement := "UPDATE " + s.quoted + " SET " + valueColumn + " = " + s.placeholder(1) + " WHERE " + keyColumn + " = " + s.placeholder(2) + " AND " + valueColumn + " = " + s.placeholder(3)
+			result, err = s.db.ExecContext(ctx, statement, packed, key, previous)
+		} else {
+			var statement string
+			switch s.dialect {
+			case SQLPostgres:
+				statement = "INSERT INTO " + s.quoted + " (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING"
+			case SQLMySQL:
+				// Do not use INSERT IGNORE: it can suppress truncation and other
+				// data errors. A concurrent insert remains a driver error.
+				statement = "INSERT INTO " + s.quoted + " (`key`, `value`) VALUES (?, ?)"
+			default:
+				statement = "INSERT INTO " + s.quoted + " (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING"
+			}
+			result, err = s.db.ExecContext(ctx, statement, key, packed)
+		}
+		if err != nil {
+			return sqlFailure("atomic update", err)
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return sqlFailure("read update result", err)
+		}
+		if affected == 0 {
+			continue
+		}
+		s.cfg.log(ctx, slog.LevelDebug, "stardb update", "sql", key)
+		return nil
+	}
+	return ErrConflict
 }
 
 func (s *SQLStore) Delete(ctx context.Context, key string) error {

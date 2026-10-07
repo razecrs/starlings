@@ -47,11 +47,14 @@ const IntentsNone Intent = 0
 // developer portal; below that, they still have to be enabled there manually.
 const IntentsPrivileged = IntentGuildMembers | IntentGuildPresences | IntentMessageContent
 
-// IntentsSelfbot is every intent a user (selfbot) token receives. A bot app
-// must have the privileged ones switched on in the developer portal; a user
-// token has no portal, so Selfbot asks for all of them and every event
-// family just works.
-const IntentsSelfbot = IntentsAllUnprivileged | IntentGuildMembers | IntentGuildPresences | IntentMessageContent
+// IntentsAll is every intent there is, privileged ones included. Convenient
+// while developing, when you would rather see every event than work out which
+// intent carries the one you want.
+//
+// The privileged three still have to be switched on in the developer portal,
+// and Discord closes the connection with an Invalid Intents code if they are
+// not, so narrow this down to what you actually handle before shipping.
+const IntentsAll = IntentsAllUnprivileged | IntentsPrivileged
 
 // IntentsAllUnprivileged is every intent that works without special approval.
 const IntentsAllUnprivileged = IntentGuilds | IntentGuildModeration | IntentGuildExpressions |

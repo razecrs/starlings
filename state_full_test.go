@@ -153,7 +153,13 @@ func TestManualStateUsesTheSameApplyPath(t *testing.T) {
 		t.Fatal("manual Apply did not update state")
 	}
 	report := guard.Report()
-	if len(report.Metrics) != 1 || report.Metrics[0].Implementation != GuardManual {
+	foundManualState := false
+	for _, metric := range report.Metrics {
+		if metric.Feature == "state.CHANNEL_CREATE" && metric.Implementation == GuardManual {
+			foundManualState = true
+		}
+	}
+	if !foundManualState {
 		t.Fatalf("guard report = %+v", report)
 	}
 	if err := c.State.Apply(&Resumed{}); !errors.Is(err, ErrUnsupportedStateEvent) {

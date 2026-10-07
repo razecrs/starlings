@@ -61,3 +61,26 @@ func TestGuardBoundsFeatureLabels(t *testing.T) {
 		t.Fatalf("bounded metrics = %+v", report.Metrics)
 	}
 }
+
+func TestGuardFindsBlockingHandlersAndWastefulCache(t *testing.T) {
+	config := StateConfig{Members: true, Presences: true, MaxMessagesPerChannel: 100}
+	state := newStateWithConfig(config)
+	state.mu.Lock()
+	state.members[1] = map[Snowflake]Member{2: {User: &User{ID: 2}}}
+	state.mu.Unlock()
+
+	g := NewGuard(WithGuardWarmup(0))
+	g.attach(state, false, IntentsNone)
+	g.Observe("handler.MESSAGE_CREATE", GuardApplication, 80*time.Millisecond, nil)
+	report := g.Report()
+
+	areas := make(map[string]bool)
+	for _, finding := range report.Findings {
+		areas[finding.Area] = true
+	}
+	for _, area := range []string{"handler.MESSAGE_CREATE", "cache.members", "cache.presences", "cache.messages"} {
+		if !areas[area] {
+			t.Fatalf("missing %s finding: %+v", area, report.Findings)
+		}
+	}
+}

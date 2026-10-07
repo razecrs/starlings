@@ -17,7 +17,7 @@ const (
 // slash command, a button press, an autocomplete request or a modal submit.
 //
 // Discord expects a reply within three seconds. If the work takes longer, call
-// Ctx.Defer first and Ctx.Followup when you have an answer.
+// Defer first, then EditResponse or Followup when the answer is ready.
 type Interaction struct {
 	ID                           Snowflake              `json:"id"`
 	ApplicationID                Snowflake              `json:"application_id"`

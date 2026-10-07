@@ -3,6 +3,7 @@ package stardb
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -91,6 +92,59 @@ func (s *FirebaseStore) Put(ctx context.Context, key string, source any) error {
 		s.cfg.log(ctx, slog.LevelDebug, "stardb put", "firebase", key)
 	}
 	return err
+}
+
+func (s *FirebaseStore) update(ctx context.Context, key string, destination any, reset func(bool) error, change func() error) error {
+	if err := s.lockKey(ctx, key); err != nil {
+		return err
+	}
+	defer s.mu.RUnlock()
+	const attempts = 8
+	for attempt := 0; attempt < attempts; attempt++ {
+		headers := s.headers()
+		headers.Set("X-Firebase-ETag", "true")
+		var current json.RawMessage
+		response, err := remoteRequest(ctx, s.client, http.MethodGet, s.endpoint(key, false), headers, nil, s.cfg.limits.MaxResponseBytes, &current, "firebase", http.StatusOK)
+		if err != nil {
+			return err
+		}
+		etag := response.Header.Get("ETag")
+		if etag == "" {
+			return fmt.Errorf("stardb: Firebase did not return an ETag")
+		}
+		exists := strings.TrimSpace(string(current)) != "null"
+		if err := reset(exists); err != nil {
+			return err
+		}
+		if exists {
+			var record blob
+			if err := json.Unmarshal(current, &record); err != nil {
+				return fmt.Errorf("stardb: decode Firebase record: %w", err)
+			}
+			if err := s.cfg.decode(key, record, destination); err != nil {
+				return err
+			}
+		}
+		if err := change(); err != nil {
+			return err
+		}
+		record, err := s.cfg.encode(key, destination)
+		if err != nil {
+			return err
+		}
+		headers = s.headers()
+		headers.Set("If-Match", etag)
+		_, err = remoteRequest(ctx, s.client, http.MethodPut, s.endpoint(key, false), headers, record, s.cfg.limits.MaxResponseBytes, nil, "firebase", http.StatusOK, http.StatusNoContent)
+		if errors.Is(err, ErrConflict) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		s.cfg.log(ctx, slog.LevelDebug, "stardb update", "firebase", key)
+		return nil
+	}
+	return ErrConflict
 }
 
 func (s *FirebaseStore) Delete(ctx context.Context, key string) error {

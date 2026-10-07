@@ -76,6 +76,35 @@ func TestFileStoresRoundTrip(t *testing.T) {
 	}
 }
 
+func TestUpdateIsAtomicAndTyped(t *testing.T) {
+	store, err := OpenJSON(filepath.Join(t.TempDir(), "atomic.json"), WithBufferedFileWrites())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	const workers = 32
+	var group sync.WaitGroup
+	group.Add(workers)
+	for range workers {
+		go func() {
+			defer group.Done()
+			_, err := Update(context.Background(), store, "count", 0, func(value *int) error {
+				*value = *value + 1
+				return nil
+			})
+			if err != nil {
+				t.Errorf("Update: %v", err)
+			}
+		}()
+	}
+	group.Wait()
+	got, err := Load[int](context.Background(), store, "count")
+	if err != nil || got != workers {
+		t.Fatalf("count=%d err=%v", got, err)
+	}
+}
+
 func TestFileStoreEncryptionAndAssociatedKey(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "secrets.json")
 	key := bytes.Repeat([]byte{0x42}, 32)

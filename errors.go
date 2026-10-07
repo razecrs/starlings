@@ -59,6 +59,76 @@ func HTTPStatus(err error) int {
 	return 0
 }
 
+// DiscordCode reports Discord's JSON error code, or zero when err is not an
+// APIError. It is distinct from the HTTP status.
+func DiscordCode(err error) int {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Code
+	}
+	return 0
+}
+
+// IsDiscordCode reports whether err carries one of the supplied Discord JSON
+// error codes.
+func IsDiscordCode(err error, codes ...int) bool {
+	got := DiscordCode(err)
+	for _, code := range codes {
+		if got == code {
+			return true
+		}
+	}
+	return false
+}
+
+// Common Discord JSON error codes. The raw integer remains available through
+// APIError.Code so newly introduced codes never require a library update.
+const (
+	ErrorUnknownAccount                 = 10001
+	ErrorUnknownApplication             = 10002
+	ErrorUnknownChannel                 = 10003
+	ErrorUnknownGuild                   = 10004
+	ErrorUnknownIntegration             = 10005
+	ErrorUnknownInvite                  = 10006
+	ErrorUnknownMember                  = 10007
+	ErrorUnknownMessage                 = 10008
+	ErrorUnknownPermissionOverwrite     = 10009
+	ErrorUnknownProvider                = 10010
+	ErrorUnknownRole                    = 10011
+	ErrorUnknownToken                   = 10012
+	ErrorUnknownUser                    = 10013
+	ErrorUnknownEmoji                   = 10014
+	ErrorMaximumGuilds                  = 30001
+	ErrorMaximumFriends                 = 30002
+	ErrorMaximumPins                    = 30003
+	ErrorMaximumRecipients              = 30004
+	ErrorMaximumGuildRoles              = 30005
+	ErrorMaximumWebhooks                = 30007
+	ErrorMaximumEmojis                  = 30008
+	ErrorMaximumReactions               = 30010
+	ErrorMaximumChannels                = 30013
+	ErrorUnauthorized                   = 40001
+	ErrorInteractionAlreadyAcknowledged = 40060
+	ErrorMissingAccess                  = 50001
+	ErrorInvalidAccountType             = 50002
+	ErrorCannotExecuteOnDM              = 50003
+	ErrorWidgetDisabled                 = 50004
+	ErrorCannotEditOtherUserMessage     = 50005
+	ErrorCannotSendEmptyMessage         = 50006
+	ErrorCannotMessageUser              = 50007
+	ErrorCannotSendInVoiceChannel       = 50008
+	ErrorChannelVerificationTooHigh     = 50009
+	ErrorOAuth2ApplicationHasNoBot      = 50010
+	ErrorOAuth2ApplicationLimit         = 50011
+	ErrorInvalidOAuth2State             = 50012
+	ErrorMissingPermissions             = 50013
+	ErrorInvalidAuthenticationToken     = 50014
+	ErrorNoteTooLong                    = 50015
+	ErrorBulkDeleteTooOld               = 50034
+	ErrorInvalidFormBody                = 50035
+	ErrorInvalidAPIVersion              = 50041
+)
+
 // IsNotFound reports whether err is a 404 from Discord.
 func IsNotFound(err error) bool { return HTTPStatus(err) == http.StatusNotFound }
 

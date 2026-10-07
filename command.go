@@ -1,6 +1,9 @@
 package starlings
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 // DefaultPrefix is what Command matches when WithPrefix is not used.
 const DefaultPrefix = "!"
@@ -24,7 +27,7 @@ type CommandFunc func(m *MessageCreate, args []string)
 // Reading message text needs the privileged MessageContent intent unless the
 // message mentions the bot or is a DM. Run warns when that intent is missing,
 // because the symptom otherwise is a bot that silently ignores every command.
-func (c *Client) Command(name string, fn CommandFunc) {
+func (c *Client) Command(name string, fn CommandFunc) *CommandRoute {
 	c.cmdMu.Lock()
 	if c.cmds == nil {
 		c.cmds = make(map[string]CommandFunc)
@@ -40,6 +43,30 @@ func (c *Client) Command(name string, fn CommandFunc) {
 	if hook {
 		On(c, c.runCommand)
 	}
+	return &CommandRoute{client: c, fn: fn}
+}
+
+// CommandRoute adds optional conveniences to a prefix command. Ignoring the
+// value returned by Command keeps the one-line form.
+type CommandRoute struct {
+	client *Client
+	fn     CommandFunc
+}
+
+// Aliases registers more names for the same handler.
+func (r *CommandRoute) Aliases(names ...string) *CommandRoute {
+	if r == nil || r.client == nil || r.fn == nil {
+		return r
+	}
+	r.client.cmdMu.Lock()
+	for _, name := range names {
+		name = strings.ToLower(strings.TrimSpace(name))
+		if name != "" {
+			r.client.cmds[name] = r.fn
+		}
+	}
+	r.client.cmdMu.Unlock()
+	return r
 }
 
 // Prefix returns the command prefix in use.
@@ -86,5 +113,6 @@ func (c *Client) Commands() []string {
 	for name := range c.cmds {
 		names = append(names, name)
 	}
+	sort.Strings(names)
 	return names
 }

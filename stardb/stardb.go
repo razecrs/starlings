@@ -27,6 +27,7 @@ var (
 	ErrInvalidKey  = errors.New("stardb: invalid key")
 	ErrTooLarge    = errors.New("stardb: size limit exceeded")
 	ErrConflict    = errors.New("stardb: concurrent update conflict")
+	ErrNotAtomic   = errors.New("stardb: backend does not support atomic updates")
 	ErrInsecureURL = errors.New("stardb: remote URL must use HTTPS")
 )
 
@@ -38,6 +39,59 @@ type Store interface {
 	Delete(context.Context, string) error
 	Keys(context.Context) ([]string, error)
 	Close() error
+}
+
+// atomicUpdater is implemented by backends that can keep a read, mutation,
+// and write indivisible. The callback receives the caller's typed destination;
+// it must not perform external side effects because a remote backend may retry
+// it after a concurrent write.
+type atomicUpdater interface {
+	update(context.Context, string, any, func(bool) error, func() error) error
+}
+
+// Update atomically loads, changes, and saves a value. If key does not exist,
+// value starts as an independent JSON copy of initial. On error the returned
+// value is zero. A callback can run up to eight times after conflicts; it must
+// not perform side effects or call back into the same file store.
+//
+//	counter, err := stardb.Update(ctx, store, "commands", 0, func(n *int) error {
+//		*n = *n + 1
+//		return nil
+//	})
+//
+// File, SQL, and Firebase stores support Update. A backend that cannot offer
+// real atomicity returns ErrNotAtomic instead of silently losing writes.
+func Update[T any](ctx context.Context, store Store, key string, initial T, change func(*T) error) (T, error) {
+	value := initial
+	if store == nil {
+		return value, fmt.Errorf("stardb: nil store")
+	}
+	if change == nil {
+		return value, fmt.Errorf("stardb: nil update function")
+	}
+	updater, ok := store.(atomicUpdater)
+	if !ok {
+		return value, ErrNotAtomic
+	}
+	seed, err := json.Marshal(initial)
+	if err != nil {
+		var zero T
+		return zero, fmt.Errorf("stardb: encode initial value: %w", err)
+	}
+	reset := func(exists bool) error {
+		var fresh T
+		value = fresh
+		if !exists {
+			return json.Unmarshal(seed, &value)
+		}
+		return nil
+	}
+	err = updater.update(ctx, key, &value, reset, func() error { return change(&value) })
+	if err != nil {
+		var zero T
+		return zero, err
+	}
+	return value, err
 }
 
 // Load retrieves a value without requiring a temporary declaration.

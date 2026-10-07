@@ -1,6 +1,9 @@
 package starlings
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 var (
 	ErrGuildNotCached   = errors.New("starlings: guild is not cached")
@@ -10,7 +13,12 @@ var (
 
 // BasePermissions calculates a member's guild-wide permissions before channel
 // overwrites. Guild owners and administrators receive every permission.
-func (s *State) BasePermissions(guildID, userID Snowflake) (Permissions, error) {
+func (s *State) BasePermissions(guildID, userID Snowflake) (value Permissions, err error) {
+	if s.guard != nil {
+		started := time.Now()
+		s.guard.cacheUse("guilds", "members", "roles")
+		defer func() { s.guard.observe("state.base_permissions", GuardAutomatic, time.Since(started), err) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.basePermissionsLocked(guildID, userID)
@@ -18,7 +26,12 @@ func (s *State) BasePermissions(guildID, userID Snowflake) (Permissions, error) 
 
 // Permissions calculates a member's effective permissions in a channel,
 // including @everyone, aggregate role, and member-specific overwrites.
-func (s *State) Permissions(guildID, channelID, userID Snowflake) (Permissions, error) {
+func (s *State) Permissions(guildID, channelID, userID Snowflake) (value Permissions, err error) {
+	if s.guard != nil {
+		started := time.Now()
+		s.guard.cacheUse("guilds", "channels", "members", "roles")
+		defer func() { s.guard.observe("state.permissions", GuardAutomatic, time.Since(started), err) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.permissionsLocked(guildID, channelID, userID)
@@ -79,7 +92,12 @@ func (s *State) permissionsLocked(guildID, channelID, userID Snowflake) (Permiss
 
 // ChannelPermissions is the short form when the channel is cached; it derives
 // the guild ID automatically.
-func (s *State) ChannelPermissions(channelID, userID Snowflake) (Permissions, error) {
+func (s *State) ChannelPermissions(channelID, userID Snowflake) (value Permissions, err error) {
+	if s.guard != nil {
+		started := time.Now()
+		s.guard.cacheUse("guilds", "channels", "members", "roles")
+		defer func() { s.guard.observe("state.permissions", GuardAutomatic, time.Since(started), err) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	channel, ok := s.channels[channelID]
@@ -126,7 +144,12 @@ func (s *State) basePermissionsLocked(guildID, userID Snowflake) (Permissions, e
 
 // UserColor returns the member's display colour from their highest coloured
 // role. Zero means Discord's default text colour.
-func (s *State) UserColor(guildID, userID Snowflake) (int, error) {
+func (s *State) UserColor(guildID, userID Snowflake) (value int, err error) {
+	if s.guard != nil {
+		started := time.Now()
+		s.guard.cacheUse("guilds", "members", "roles")
+		defer func() { s.guard.observe("state.user_color", GuardAutomatic, time.Since(started), err) }()
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if _, ok := s.guilds[guildID]; !ok {

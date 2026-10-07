@@ -123,6 +123,52 @@ func (s *FileStore) Put(ctx context.Context, key string, value any) error {
 	return nil
 }
 
+func (s *FileStore) update(ctx context.Context, key string, destination any, reset func(bool) error, change func() error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := s.cfg.validateKey(key); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return ErrClosed
+	}
+	previous, existed := s.data[key]
+	if err := reset(existed); err != nil {
+		return err
+	}
+	if existed {
+		if err := s.cfg.decode(key, cloneBlob(previous), destination); err != nil {
+			return err
+		}
+	}
+	if err := change(); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	encoded, err := s.cfg.encode(key, destination)
+	if err != nil {
+		return err
+	}
+	s.data[key] = encoded
+	if s.cfg.bufferedFileWrites {
+		s.dirty = true
+	} else if err := s.persist(s.data); err != nil {
+		if existed {
+			s.data[key] = previous
+		} else {
+			delete(s.data, key)
+		}
+		return err
+	}
+	s.cfg.log(ctx, slog.LevelDebug, "stardb update", s.backend(), key)
+	return nil
+}
+
 func (s *FileStore) Delete(ctx context.Context, key string) error {
 	if err := ctx.Err(); err != nil {
 		return err

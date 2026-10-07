@@ -22,12 +22,11 @@ const Version = "10"
 //
 // The zero Client is not usable - build one with New.
 type Client struct {
-	token     string // Authorization header value
-	userToken bool   // token is a user (selfbot) token, sent without "Bot "
-	id        ClientIdentity
-	intents   Intent
-	log       *slog.Logger
-	rest      *rest
+	token   string // Authorization header value
+	id      ClientIdentity
+	intents Intent
+	log     *slog.Logger
+	rest    *rest
 
 	// slots maps a Discord event name to its handlers. It is replaced
 	// wholesale on registration so the gateway can read it without a lock.
@@ -69,8 +68,13 @@ type Client struct {
 
 	// Slash commands, registered with Slash.
 	slashMu     sync.RWMutex
-	slashes     map[string]slashEntry
+	slashes     map[commandKey]slashEntry
+	components  map[componentKey]componentHandler
+	tasks       *taskRunner
+	taskLimit   int
 	slashHooked bool
+	syncGuild   *Snowflake
+	syncOnce    sync.Once
 
 	ready     chan struct{}
 	readyOnce sync.Once
@@ -133,10 +137,15 @@ func WithAsyncEvents(enabled bool) Option {
 // with Command. The default is DefaultPrefix, "!".
 func WithPrefix(prefix string) Option { return func(c *Client) { c.prefix = prefix } }
 
-// WithUserToken marks the token as a user (selfbot) token. Discord expects
-// user tokens bare in the Authorization header, so the "Bot " prefix is not
-// added - and an accidentally passed one is stripped.
-func WithUserToken() Option { return func(c *Client) { c.userToken = true } }
+// WithCommandSync publishes commands automatically after the first READY.
+// Use a guild ID while developing for immediate updates, or zero for global
+// commands. Without this option, SyncCommands remains fully manual.
+func WithCommandSync(guildID Snowflake) Option {
+	return func(c *Client) {
+		id := guildID
+		c.syncGuild = &id
+	}
+}
 
 // ClientIdentity is what the client tells Discord it is: the browser and device
 // strings in the gateway identify payload, and the User-Agent on REST calls.
@@ -148,31 +157,20 @@ type ClientIdentity struct {
 	UserAgent string
 }
 
-// selfbotUserAgent is a desktop-Discord User-Agent. A user token behind a
-// bot-looking User-Agent still works, but a real client's is less likely to
-// trip a rate-limit or fraud check.
-const selfbotUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-	"(KHTML, like Gecko) discord/1.0.9197 Chrome/128.0.6613.186 Electron/32.2.1 Safari/537.36"
-
-var (
-	botIdentity     = ClientIdentity{Browser: "starlings", Device: "starlings", UserAgent: userAgent}
-	selfbotIdentity = ClientIdentity{Browser: "discord", Device: "discord", UserAgent: selfbotUserAgent}
-)
+var botIdentity = ClientIdentity{Browser: "starlings", Device: "starlings", UserAgent: userAgent}
 
 // WithIdentity overrides what the client tells Discord it is: the browser and
 // device strings in the identify payload, and the REST User-Agent.
 func WithIdentity(id ClientIdentity) Option { return func(c *Client) { c.id = id } }
 
-// SelfbotPace is the default minimum interval between two REST requests a
-// Selfbot makes: spaced out enough to read as a person taking their time,
-// tight enough that nothing feels sluggish.
-const SelfbotPace = 2 * time.Second
-
 // WithPacing sets the minimum interval between any two REST requests the
 // client makes - a global gate in front of the rate limiter, applied one
-// request at a time. New leaves it at zero (as fast as Discord's rate limits
-// allow), and Selfbot starts at SelfbotPace, which is what keeps a user token
-// from getting limited for spam. Pass WithPacing(0) to opt out of it.
+// request at a time. The default is zero, meaning as fast as Discord's rate
+// limits allow.
+//
+// Set it when you would rather be gentle than quick: a bulk backfill, a
+// migration script, or any job whose throughput you do not care about but
+// whose 429s you do.
 func WithPacing(gap time.Duration) Option {
 	return func(c *Client) { c.rest.pacer.set(gap) }
 }
@@ -214,50 +212,46 @@ func New(token string, opts ...Option) *Client {
 	}
 	if c.State != nil {
 		c.State.guard = c.guard
+		if c.guard != nil {
+			c.guard.attach(c.State, c.asyncEvents, c.intents)
+		}
 		if c.guard != nil && c.State.Mode() == StateManual {
 			c.log.Info("starlings guard: manual implementation active", "feature", "state")
 		}
 	}
 
-	// Normalised after the options so WithUserToken can pick the header form.
-	if c.userToken {
-		c.token = normalizeUserToken(token)
-	} else {
-		c.token = normalizeToken(token)
-	}
+	c.token = normalizeToken(token)
 	c.installStateHandlers()
+	if c.syncGuild != nil {
+		guildID := *c.syncGuild
+		internalOn(c, func(ready *Ready) {
+			if ready.Client().ApplicationID().IsZero() {
+				return
+			}
+			c.syncOnce.Do(func() {
+				go func() {
+					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+					defer cancel()
+					if err := ready.Client().SyncCommands(ctx, guildID); err != nil {
+						c.log.Error("starlings: syncing application commands", "err", err)
+					}
+				}()
+			})
+		})
+	}
 	return c
 }
 
-// Selfbot builds a client that acts as a user account, the same one-liner
-// route New gives bot applications:
-//
-//	bot := starlings.Selfbot(os.Getenv("DC_TOKEN"))
-//	bot.Command("ping", func(m *starlings.MessageCreate, _ []string) { m.Reply("pong") })
-//	log.Fatal(bot.Run())
-//
-// The token is a user token - a logged-in account's token, not a bot
-// application's. Selfbot is New plus everything the bot route
-// would need you to click: the token goes out without the "Bot " prefix,
-// every user intent is on, the connection identifies as desktop Discord,
-// REST requests are paced one at a time (SelfbotPace), and your existing
-// presence is left alone. Options passed here override those defaults, and
-// everything else - Command, On, Reply, SendDM, voice - is the same API.
-func Selfbot(token string, opts ...Option) *Client {
-	c := New(token, append([]Option{
-		WithUserToken(),
-		WithIntents(IntentsSelfbot),
-		WithIdentity(selfbotIdentity),
-		WithPacing(SelfbotPace),
-	}, opts...)...)
-	if c.initialState == nil {
-		// A real client always carries a presence in its identify. Without
-		// one, Discord accepts later presence updates from the session but
-		// never applies them, so a selfbot comes up online the way the
-		// desktop client does. WithStatus still overrides this.
-		c.initialState = &presence{Status: string(StatusOnline), Activities: []Activity{}}
+// NewCommandBot is the zero-boilerplate constructor for prefix-command bots.
+// It is New with the guild-message, direct-message, and message-content
+// intents selected and resource caching disabled. Options are applied
+// afterward, so WithIntents and WithStateCache can replace either preset.
+func NewCommandBot(token string, opts ...Option) *Client {
+	defaults := []Option{
+		WithIntents(IntentGuildMessages | IntentDirectMessages | IntentMessageContent),
+		WithStateCache(MinimalStateConfig()),
 	}
-	return c
+	return New(token, append(defaults, opts...)...)
 }
 
 // normalizeToken accepts a raw token, "Bot <token>", or the "Bot<token>" form
@@ -273,19 +267,6 @@ func normalizeToken(token string) string {
 		return "Bot " + rest
 	}
 	return "Bot " + t
-}
-
-// normalizeUserToken returns a user (selfbot) token the way Discord wants it:
-// bare, with no "Bot " prefix. An accidentally prefixed one is stripped.
-func normalizeUserToken(token string) string {
-	t := strings.TrimSpace(token)
-	if rest, ok := strings.CutPrefix(t, "Bot "); ok {
-		return strings.TrimSpace(rest)
-	}
-	if rest, ok := strings.CutPrefix(t, "Bot"); ok && rest != "" && !strings.ContainsAny(rest, " \t") {
-		return rest
-	}
-	return t
 }
 
 // Run connects to the gateway and blocks until the process is interrupted with
@@ -311,6 +292,7 @@ func (c *Client) Run() error {
 // token, or intents the bot has not been granted - because retrying those
 // would fail identically forever.
 func (c *Client) RunContext(ctx context.Context) error {
+	defer c.stopTasks()
 	if c.starlog != nil {
 		c.starlog.Attach(c)
 		c.starlog.Start(ctx)
@@ -323,7 +305,7 @@ func (c *Client) RunContext(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	c.cancel = cancel
 	defer cancel()
-	if !c.autoShards || c.userToken {
+	if !c.autoShards {
 		return c.gw.run(ctx, c)
 	}
 	return c.runAutoSharded(ctx)
@@ -344,6 +326,7 @@ func (c *Client) WaitReady(ctx context.Context) error {
 // Close disconnects from the gateway. RunContext returns after it.
 func (c *Client) Close() error {
 	c.closeOnce.Do(func() {
+		c.stopTasks()
 		c.voiceMu.Lock()
 		voice := c.voice
 		c.voiceMu.Unlock()

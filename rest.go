@@ -415,7 +415,7 @@ func parseAPIError(status int, data []byte) error {
 // pacemaker enforces a minimum interval between the starts of any two REST
 // requests. It is global - one pace for the whole client, not per bucket -
 // and it serialises: with a gap set, requests go out one at a time, which is
-// what keeps a selfbot from looking like a burst of requests.
+// what WithPacing uses to keep a job from going out as a burst.
 type pacemaker struct {
 	mu   sync.Mutex
 	gap  time.Duration

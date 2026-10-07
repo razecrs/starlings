@@ -24,12 +24,7 @@ import (
 )
 
 func main() {
-	bot := starlings.New(os.Getenv("DISCORD_TOKEN"),
-		starlings.WithIntents(
-			starlings.IntentGuilds |
-				starlings.IntentGuildMessages |
-				starlings.IntentMessageContent,
-		))
+	bot := starlings.NewCommandBot(os.Getenv("DISCORD_TOKEN"))
 
 	bot.Command("ping", func(m *starlings.MessageCreate, _ []string) {
 		if _, err := m.Reply("pong"); err != nil {
@@ -44,6 +39,11 @@ func main() {
 ```
 
 `New` performs no network work. Register commands and handlers first; `Run` connects and blocks until Ctrl-C/SIGTERM or a fatal configuration error. Network drops, resumable sessions, invalid sessions, and Discord-requested reconnects are handled internally.
+
+`NewCommandBot` is `New` with the message intents selected and resource cache
+disabled. It does not hide a second client or runtime. Pass `WithStateCache`
+or `WithIntents` to replace either preset, or use `New` for the complete
+default cache.
 
 ## Events and commands
 

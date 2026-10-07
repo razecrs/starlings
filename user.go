@@ -81,6 +81,19 @@ func (m *Member) DisplayName() string {
 	return ""
 }
 
+// AvatarURL returns this member's guild-specific avatar. When the member has
+// not set one it falls back to the user's normal (or default) avatar. An empty
+// string means the payload did not include enough user information.
+func (m *Member) AvatarURL(guildID Snowflake, size int) string {
+	if m == nil || m.User == nil {
+		return ""
+	}
+	if m.Avatar == "" {
+		return m.User.AvatarURL(size)
+	}
+	return cdnURL("guilds/"+guildID.String()+"/users/"+m.User.ID.String()+"/avatars/"+m.Avatar, m.Avatar, size)
+}
+
 // TimedOut reports whether the member is currently under a timeout.
 func (m *Member) TimedOut() bool {
 	return m.CommunicationDisabledUntil != nil && m.CommunicationDisabledUntil.After(time.Now())

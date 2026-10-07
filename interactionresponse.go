@@ -102,7 +102,12 @@ func (i *InteractionCreate) ReplyFiles(data InteractionResponseData, files ...Fi
 
 // Reply answers with a message, visible to everyone in the channel.
 func (i *InteractionCreate) Reply(content string) error {
-	return i.Respond(context.Background(), InteractionResponse{
+	return i.ReplyContext(context.Background(), content)
+}
+
+// ReplyContext is Reply with an application-owned deadline or cancellation.
+func (i *InteractionCreate) ReplyContext(ctx context.Context, content string) error {
+	return i.Respond(ctx, InteractionResponse{
 		Type: CallbackChannelMessageWithSource,
 		Data: &InteractionResponseData{Content: content},
 	})
@@ -111,7 +116,12 @@ func (i *InteractionCreate) Reply(content string) error {
 // ReplyEphemeral answers with a message only the invoking user can see, which
 // is the polite default for errors and for anything noisy.
 func (i *InteractionCreate) ReplyEphemeral(content string) error {
-	return i.Respond(context.Background(), InteractionResponse{
+	return i.ReplyEphemeralContext(context.Background(), content)
+}
+
+// ReplyEphemeralContext sends a private reply using the supplied context.
+func (i *InteractionCreate) ReplyEphemeralContext(ctx context.Context, content string) error {
+	return i.Respond(ctx, InteractionResponse{
 		Type: CallbackChannelMessageWithSource,
 		Data: &InteractionResponseData{Content: content, Flags: MessageFlagEphemeral},
 	})
@@ -315,6 +325,22 @@ func (i *InteractionCreate) Modal(customID, title string, components ...Componen
 func (d *InteractionData) Option(name string) *InteractionOption {
 	return findOption(d.Options, name)
 }
+
+// String returns a named string option, or "" when it is absent. It is the
+// short form of i.Data.Option(name).String().
+func (i *InteractionCreate) String(name string) string { return i.Data.Option(name).String() }
+
+// Int returns a named integer option, or 0 when it is absent.
+func (i *InteractionCreate) Int(name string) int64 { return i.Data.Option(name).Int() }
+
+// Float returns a named number option, or 0 when it is absent.
+func (i *InteractionCreate) Float(name string) float64 { return i.Data.Option(name).Float() }
+
+// Bool returns a named boolean option, or false when it is absent.
+func (i *InteractionCreate) Bool(name string) bool { return i.Data.Option(name).Bool() }
+
+// OptionID returns a named snowflake option, or zero when it is absent.
+func (i *InteractionCreate) OptionID(name string) Snowflake { return i.Data.Option(name).Snowflake() }
 
 func findOption(opts []InteractionOption, name string) *InteractionOption {
 	for i := range opts {

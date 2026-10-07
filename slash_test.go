@@ -11,11 +11,15 @@ import (
 // interactionFrame builds an INTERACTION_CREATE for a slash command with the
 // given options, as Discord sends them.
 func interactionFrame(name, options string) []byte {
+	return interactionFrameOfType(name, options, InteractionApplicationCommand)
+}
+
+func interactionFrameOfType(name, options string, interactionType InteractionType) []byte {
 	if options == "" {
 		options = "[]"
 	}
 	return []byte(`{"t":"INTERACTION_CREATE","s":1,"op":0,"d":{` +
-		`"id":"100","application_id":"200","type":2,"token":"tok",` +
+		`"id":"100","application_id":"200","type":` + itoa(int(interactionType)) + `,"token":"tok",` +
 		`"data":{"id":"300","name":"` + name + `","type":1,"options":` + options + `}}}`)
 }
 
@@ -35,6 +39,44 @@ func TestSlashRouting(t *testing.T) {
 	deliver(t, c, interactionFrame("nosuchcommand", ""))
 	if called != "" {
 		t.Errorf("unknown command routed to %q, want no handler", called)
+	}
+}
+
+func TestSlashAutocompleteIsSeparateFromExecution(t *testing.T) {
+	c := testClient()
+	executions := 0
+	autocompletes := 0
+	c.Slash("search", "find", func(*InteractionCreate) { executions++ }).
+		Autocomplete(func(*InteractionCreate) { autocompletes++ })
+
+	deliver(t, c, interactionFrameOfType("search", "", InteractionCommandAutocomplete))
+	if executions != 0 || autocompletes != 1 {
+		t.Fatalf("autocomplete routed executions=%d autocompletes=%d, want 0/1", executions, autocompletes)
+	}
+
+	deliver(t, c, interactionFrame("search", ""))
+	if executions != 1 || autocompletes != 1 {
+		t.Fatalf("command routed executions=%d autocompletes=%d, want 1/1", executions, autocompletes)
+	}
+}
+
+func TestSlashRouteErgonomics(t *testing.T) {
+	c := testClient()
+	want := PermissionBanMembers | PermissionModerateMembers
+	c.Slash("ban", "Ban a member", func(*InteractionCreate) {}).
+		Permissions(want).
+		GuildOnly().
+		InstallTypes(IntegrationGuildInstall)
+
+	defs := c.SlashDefinitions()
+	if len(defs) != 1 || defs[0].DefaultMemberPermissions == nil || *defs[0].DefaultMemberPermissions != want {
+		t.Fatalf("permissions = %#v, want %v", defs, want)
+	}
+	if len(defs[0].Contexts) != 1 || defs[0].Contexts[0] != InteractionContextGuild {
+		t.Fatalf("contexts = %v, want guild only", defs[0].Contexts)
+	}
+	if len(defs[0].IntegrationTypes) != 1 || defs[0].IntegrationTypes[0] != IntegrationGuildInstall {
+		t.Fatalf("integration types = %v, want guild install", defs[0].IntegrationTypes)
 	}
 }
 

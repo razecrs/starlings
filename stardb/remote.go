@@ -23,8 +23,8 @@ func (e *RemoteError) Error() string {
 	return fmt.Sprintf("stardb: %s returned HTTP %d", e.Backend, e.Status)
 }
 
-// Temporary reports whether retrying later may succeed. StarDB does not retry
-// writes automatically because applications may need stronger idempotency.
+// Temporary reports whether retrying later may succeed. Ordinary writes are
+// not retried because applications may need stronger idempotency.
 func (e *RemoteError) Temporary() bool {
 	return e.Status == http.StatusTooManyRequests || e.Status >= 500
 }

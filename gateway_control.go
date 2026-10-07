@@ -2,6 +2,7 @@ package starlings
 
 import (
 	"context"
+	json "encoding/json/v2"
 	"errors"
 	"fmt"
 	"time"
@@ -112,10 +113,33 @@ func sinceFor(status Status) *int64 {
 type MemberRequest struct {
 	GuildID   Snowflake   `json:"guild_id"`
 	Query     *string     `json:"query,omitzero"`
-	Limit     int         `json:"limit,omitzero"`
+	Limit     int         `json:"-"`
 	Presences bool        `json:"presences,omitzero"`
 	UserIDs   []Snowflake `json:"user_ids,omitzero"`
 	Nonce     string      `json:"nonce,omitzero"`
+}
+
+// MarshalJSON preserves Discord's distinction between an absent limit and
+// limit 0. Query-based requests require the field even when it is zero (zero
+// means every matching member); user-ID requests must omit it.
+func (r MemberRequest) MarshalJSON() ([]byte, error) {
+	type wireMemberRequest struct {
+		GuildID   Snowflake   `json:"guild_id"`
+		Query     *string     `json:"query,omitzero"`
+		Limit     *int        `json:"limit,omitzero"`
+		Presences bool        `json:"presences,omitzero"`
+		UserIDs   []Snowflake `json:"user_ids,omitzero"`
+		Nonce     string      `json:"nonce,omitzero"`
+	}
+
+	var limit *int
+	if r.Query != nil {
+		limit = &r.Limit
+	}
+	return json.Marshal(wireMemberRequest{
+		GuildID: r.GuildID, Query: r.Query, Limit: limit,
+		Presences: r.Presences, UserIDs: r.UserIDs, Nonce: r.Nonce,
+	})
 }
 
 // RequestMembers asks Discord to send GuildMembersChunk events. The

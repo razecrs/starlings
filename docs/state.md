@@ -118,7 +118,13 @@ side effect. Explicit `Measure` calls compare production aggregates without
 replaying anything; explicit `GuardCompare` calls add output mismatch checks
 where double execution is safe.
 
-`bot.Guard().Report()` returns structured metrics and advice. Its
+Guard also measures application handler latency and observes state access when
+enabled. After its warmup it flags synchronous handlers that block dispatch,
+enabled cache categories that are never read, low hit rates, missing intents,
+oversized full-cache snapshots, and an overprovisioned message cache. Guard is
+off by default; the hot state path has no timer or metric work unless enabled.
+
+`bot.Guard().Report()` returns structured metrics, runtime memory counters, and advice. Its
 `String()` method is ready for a development log:
 
 ```go

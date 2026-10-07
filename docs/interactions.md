@@ -6,7 +6,7 @@
 
 ```go
 bot.Slash("say", "Repeat text", func(i *starlings.InteractionCreate) {
-	text := i.Data.Option("text").String()
+	text := i.String("text")
 	if err := i.Reply(text); err != nil {
 		log.Print(err)
 	}
@@ -21,6 +21,15 @@ bot.On(func(*starlings.Ready) {
 })
 ```
 
+Small bots can replace the Ready handler with an explicit startup option:
+
+```go
+bot := starlings.New(token, starlings.WithCommandSync(developmentGuildID))
+```
+
+This syncs once after READY. Omit the option when deployment code should own
+when command definitions change.
+
 A non-zero guild ID updates that guild immediately. Zero publishes global commands, which Discord may take longer to propagate. `SlashCommand` accepts a complete `ApplicationCommand` for context menus, localisations, default permissions, subcommands, and other fields the shorthand does not expose.
 
 ## Read options
@@ -28,9 +37,9 @@ A non-zero guild ID updates that guild immediately. Zero publishes global comman
 `InteractionData.Option` searches through subcommands. Scalar accessors return their zero value for an absent or wrong type; validate when zero is meaningful to the command.
 
 ```go
-name := i.Data.Option("name").String()
-count := i.Data.Option("count").Int()
-public := i.Data.Option("public").Bool()
+name := i.String("name")
+count := i.Int("count")
+public := i.Bool("public")
 user := i.UserOption("member")
 channel := i.ChannelOption("channel")
 role := i.RoleOption("role")

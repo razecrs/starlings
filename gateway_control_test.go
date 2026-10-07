@@ -2,6 +2,7 @@ package starlings
 
 import (
 	"context"
+	json "encoding/json/v2"
 	"errors"
 	"strings"
 	"testing"
@@ -52,6 +53,25 @@ func TestMemberRequestValidation(t *testing.T) {
 				t.Fatalf("RequestMembers() error = %v, want text %q", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestMemberRequestWireShape(t *testing.T) {
+	query := ""
+	full, err := json.Marshal(MemberRequest{GuildID: 1, Query: &query, Limit: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(full), `"query":""`) || !strings.Contains(string(full), `"limit":0`) {
+		t.Fatalf("full member request = %s, want explicit empty query and limit 0", full)
+	}
+
+	users, err := json.Marshal(MemberRequest{GuildID: 1, UserIDs: []Snowflake{2}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(users), `"limit"`) || strings.Contains(string(users), `"query"`) {
+		t.Fatalf("user-ID member request = %s, want neither query nor limit", users)
 	}
 }
 

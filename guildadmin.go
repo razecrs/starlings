@@ -2,6 +2,7 @@ package starlings
 
 import (
 	"context"
+	json "encoding/json/v2"
 	"net/http"
 	"net/url"
 	"time"
@@ -286,26 +287,73 @@ const (
 	EventExternal      = 3 // somewhere outside Discord; needs EntityMetadata
 )
 
+// ScheduledEventMetadata holds the location of an external scheduled event.
+// It is an alias, so code written against the earlier anonymous struct still
+// compiles.
+type ScheduledEventMetadata = struct {
+	Location string `json:"location"`
+}
+
 // ScheduledEvent is a planned guild event.
 type ScheduledEvent struct {
-	ID                 Snowflake  `json:"id"`
-	GuildID            Snowflake  `json:"guild_id"`
-	ChannelID          Snowflake  `json:"channel_id,omitzero"`
-	CreatorID          Snowflake  `json:"creator_id,omitzero"`
-	Name               string     `json:"name"`
-	Description        string     `json:"description,omitzero"`
-	ScheduledStartTime time.Time  `json:"scheduled_start_time"`
-	ScheduledEndTime   *time.Time `json:"scheduled_end_time,omitzero"`
-	PrivacyLevel       int        `json:"privacy_level"` // always 2, guild-only
-	Status             int        `json:"status,omitzero"`
-	EntityType         int        `json:"entity_type"`
-	EntityID           Snowflake  `json:"entity_id,omitzero"`
-	EntityMetadata     *struct {
-		Location string `json:"location"`
-	} `json:"entity_metadata,omitzero"`
-	Creator   *User  `json:"creator,omitzero"`
-	UserCount int    `json:"user_count,omitzero"`
-	Image     string `json:"image,omitzero"`
+	ID                 Snowflake               `json:"id"`
+	GuildID            Snowflake               `json:"guild_id"`
+	ChannelID          Snowflake               `json:"channel_id,omitzero"`
+	CreatorID          Snowflake               `json:"creator_id,omitzero"`
+	Name               string                  `json:"name"`
+	Description        string                  `json:"description,omitzero"`
+	ScheduledStartTime time.Time               `json:"scheduled_start_time"`
+	ScheduledEndTime   *time.Time              `json:"scheduled_end_time,omitzero"`
+	PrivacyLevel       int                     `json:"privacy_level"` // always 2, guild-only
+	Status             int                     `json:"status,omitzero"`
+	EntityType         int                     `json:"entity_type"`
+	EntityID           Snowflake               `json:"entity_id,omitzero"`
+	EntityMetadata     *ScheduledEventMetadata `json:"entity_metadata,omitzero"`
+	Creator            *User                   `json:"creator,omitzero"`
+	UserCount          int                     `json:"user_count,omitzero"`
+	Image              string                  `json:"image,omitzero"`
+}
+
+// ScheduledEventUpdate is a partial scheduled-event PATCH. Zero values are
+// omitted, so changing one field never accidentally sends empty required
+// create fields. Clear flags encode JSON null for Discord's nullable fields.
+type ScheduledEventUpdate struct {
+	ChannelID          *Snowflake              `json:"channel_id,omitzero"`
+	Name               string                  `json:"name,omitzero"`
+	Description        *string                 `json:"description,omitzero"`
+	ScheduledStartTime *time.Time              `json:"scheduled_start_time,omitzero"`
+	ScheduledEndTime   *time.Time              `json:"scheduled_end_time,omitzero"`
+	PrivacyLevel       int                     `json:"privacy_level,omitzero"`
+	Status             int                     `json:"status,omitzero"`
+	EntityType         int                     `json:"entity_type,omitzero"`
+	EntityMetadata     *ScheduledEventMetadata `json:"entity_metadata,omitzero"`
+	Image              *string                 `json:"image,omitzero"`
+
+	ClearChannel        bool `json:"-"`
+	ClearScheduledEnd   bool `json:"-"`
+	ClearEntityMetadata bool `json:"-"`
+}
+
+func (u ScheduledEventUpdate) MarshalJSON() ([]byte, error) {
+	type plain ScheduledEventUpdate
+	base, err := json.Marshal(plain(u))
+	if err != nil {
+		return nil, err
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(base, &fields); err != nil {
+		return nil, err
+	}
+	if u.ClearChannel {
+		fields["channel_id"] = nil
+	}
+	if u.ClearScheduledEnd {
+		fields["scheduled_end_time"] = nil
+	}
+	if u.ClearEntityMetadata {
+		fields["entity_metadata"] = nil
+	}
+	return json.Marshal(fields)
 }
 
 // ScheduledEvents lists a guild's scheduled events.
@@ -375,6 +423,24 @@ func (c *Client) ModifyScheduledEvent(ctx context.Context, guildID, eventID Snow
 		Path:   "/guilds/" + guildID.String() + "/scheduled-events/" + eventID.String(),
 		Route:  "PATCH /guilds/" + guildID.String() + "/scheduled-events/{id}",
 		Body:   e,
+		Reason: reason,
+	}, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// UpdateScheduledEvent edits only the supplied fields. Prefer this over
+// ModifyScheduledEvent, whose whole-object payload is retained for v0.1.0
+// compatibility.
+func (c *Client) UpdateScheduledEvent(ctx context.Context, guildID, eventID Snowflake, update ScheduledEventUpdate, reason string) (*ScheduledEvent, error) {
+	var out ScheduledEvent
+	err := c.rest.do(ctx, request{
+		Method: http.MethodPatch,
+		Path:   "/guilds/" + guildID.String() + "/scheduled-events/" + eventID.String(),
+		Route:  "PATCH /guilds/" + guildID.String() + "/scheduled-events/{id}",
+		Body:   update,
 		Reason: reason,
 	}, &out)
 	if err != nil {
