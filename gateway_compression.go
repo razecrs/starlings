@@ -81,7 +81,15 @@ func (i *gatewayInflater) inflate(input *io.PipeReader, limit int64) {
 			return
 		}
 		limited.reset()
-		i.frames <- append([]byte(nil), value...)
+		frame := append([]byte(nil), value...)
+		if len(frame) > largeFrame {
+			// The decoder keeps a buffer as large as the largest frame it has
+			// read, for the life of the connection. Replace it after a large
+			// frame such as a big GUILD_CREATE. Nothing of the next frame is
+			// buffered yet: it is only written after this one is taken.
+			decoder = jsontext.NewDecoder(limited)
+		}
+		i.frames <- frame
 	}
 }
 

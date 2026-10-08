@@ -72,7 +72,23 @@ func (c *Client) DownloadAttachment(ctx context.Context, a Attachment, limit int
 		ua = userAgent
 	}
 	req.Header.Set("User-Agent", ua)
-	resp, err := c.rest.http.Do(req)
+	// Validate every hop, not only the initial URL. Share the transport for
+	// pooling, but do not change the application's client or redirect policy.
+	downloadClient := *c.rest.http
+	redirectPolicy := downloadClient.CheckRedirect
+	downloadClient.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+		if !trustedDiscordCDN(next.URL.String()) {
+			return ErrUntrustedAttachmentURL
+		}
+		if redirectPolicy != nil {
+			return redirectPolicy(next, via)
+		}
+		if len(via) >= 10 {
+			return errors.New("starlings: too many attachment redirects")
+		}
+		return nil
+	}
+	resp, err := downloadClient.Do(req)
 	if err != nil {
 		var urlErr *url.Error
 		if errors.As(err, &urlErr) {

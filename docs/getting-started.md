@@ -11,14 +11,49 @@ go mod init example.com/mybot
 go get github.com/razecrs/starlings@latest
 ```
 
-## Run the first bot
+## Run a slash-command bot
+
+These examples describe this checkout. The published v0.1.1 constructor used
+`New(token, options...)`; the new form is `New(WithToken(token), options...)`,
+or just `New()` when `DISCORD_TOKEN` is set.
+
+Set `DISCORD_TOKEN` and `DISCORD_GUILD_ID` in your environment or a local `.env`
+file. The guild ID keeps command publishing scoped to your development server.
+Without it, automatic sync targets the application's global commands.
 
 ```go
 package main
 
 import (
 	"log"
-	"os"
+	"github.com/razecrs/starlings"
+)
+
+func main() {
+	bot := starlings.New(starlings.WithStateCache(starlings.MinimalStateConfig()))
+	bot.Slash("ping", "Check the bot is alive", func() string { return "pong" })
+	if err := bot.Run(); err != nil {
+		log.Fatal(err)
+	}
+}
+```
+
+Slash commands do not need Message Content intent. `Run` infers intents from
+handlers and automatically syncs registered commands after READY, unless
+disabled with `WithAutoSync(false)`. Sync replaces the command set in its
+target scope: do not let multiple deployments publish different command sets
+to the same application and scope.
+
+See [interactions](interactions.md) for typed arguments, private replies,
+buttons, errors, and the explicit API.
+
+## Run a prefix-command bot
+
+```go
+package main
+
+import (
+	"log"
 
 	"github.com/razecrs/starlings"
 )

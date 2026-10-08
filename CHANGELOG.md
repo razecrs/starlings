@@ -160,6 +160,27 @@ user.Send("a direct message")
   the delay, and `NoAutoDefer` turns it off for a command that opens a modal
   after slow work.
 
+### Startup and memory
+
+- While asking Discord how many shards to use, the client already opens the
+  gateway connection at the usual address. It identifies only after the
+  answer confirms one shard there, so a single-shard bot sends IDENTIFY about
+  200 ms sooner.
+- Once the startup burst of guilds and member lists has been quiet for two
+  seconds, the client returns the memory it needed to the operating system.
+  `WithMemoryTrim(false)` turns this off.
+- Gateway decoders no longer keep a buffer as large as the largest frame
+  they have read.
+- Automatic command publishing waits a moment after READY and does nothing if
+  the application published commands itself, so a bot that manages its own
+  commands never has them published elsewhere.
+- Guild commands compare equal to their definitions even though Discord
+  leaves contexts and install types out of them, so unchanged commands are
+  not published again on every start.
+- `State.GuildInfo` and `State.MemberCount` read guild metadata and cached
+  member counts without copying collections. Full guild and member snapshots
+  copy each resource once instead of twice.
+
 ### REST
 
 - A route whose limits are not known yet sends one request first, then as

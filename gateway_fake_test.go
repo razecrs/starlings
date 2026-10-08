@@ -242,3 +242,40 @@ func TestSendWindowKeepsReserveForPriority(t *testing.T) {
 		t.Fatal("window allowed more than 120 sends")
 	}
 }
+
+func TestGatewayAdoptsPreDialedConnection(t *testing.T) {
+	connections := 0
+	var mu sync.Mutex
+	g := newFakeGateway(t, func(conn *websocket.Conn, f fakeFrame) {
+		if f.Op == OpIdentify {
+			writeDispatch(conn, 1, "READY", fakeReady)
+		}
+	})
+	inner := g.server.Config.Handler
+	g.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		connections++
+		mu.Unlock()
+		inner.ServeHTTP(w, r)
+	})
+	c := g.client()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c.gw.pre = c.startPreDial(ctx, c.gatewayBase)
+	go c.RunContext(ctx)
+	waitFor(t, "READY on the pre-dialed connection", c.Online)
+	mu.Lock()
+	defer mu.Unlock()
+	if connections != 1 {
+		t.Fatalf("opened %d gateway connections, want the pre-dialed one only", connections)
+	}
+}
+
+func TestPreDialForAnotherURLIsNotUsed(t *testing.T) {
+	g := newFakeGateway(t, nil)
+	c := g.client()
+	p := c.startPreDial(context.Background(), c.gatewayBase)
+	if conn := p.take(context.Background(), c.gatewayDialURL("wss://elsewhere.invalid")); conn != nil {
+		t.Fatal("a connection to a different URL was adopted")
+	}
+}

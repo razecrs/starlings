@@ -2,6 +2,7 @@ package starlings
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"strconv"
 	"strings"
@@ -107,6 +108,10 @@ type adaptedHandler struct {
 // adaptHandler checks handler's shape and wraps it. what names the route in
 // error messages.
 func adaptHandler(what string, handler any, source argSource, description string) adaptedHandler {
+	v := reflect.ValueOf(handler)
+	if !v.IsValid() || v.Kind() == reflect.Func && v.IsNil() {
+		panic("starlings: " + what + ": handler must not be nil")
+	}
 	switch fn := handler.(type) {
 	case func(*InteractionCreate):
 		return adaptedHandler{call: func(i *InteractionCreate) error { fn(i); return nil }}
@@ -116,12 +121,33 @@ func adaptHandler(what string, handler any, source argSource, description string
 		return adaptedHandler{call: fn}
 	case HandlerFunc:
 		return adaptedHandler{call: fn}
+	case func() error:
+		return adaptedHandler{call: func(*InteractionCreate) error { return fn() }}
+	case func() string:
+		return adaptedHandler{call: func(i *InteractionCreate) error { return sendResult(i, fn()) }}
+	case func(*InteractionCreate) string:
+		return adaptedHandler{call: func(i *InteractionCreate) error { return sendResult(i, fn(i)) }}
+	case func() (string, error):
+		return adaptedHandler{call: func(i *InteractionCreate) error {
+			text, err := fn()
+			if err != nil {
+				return err
+			}
+			return sendResult(i, text)
+		}}
+	case func(*InteractionCreate) (string, error):
+		return adaptedHandler{call: func(i *InteractionCreate) error {
+			text, err := fn(i)
+			if err != nil {
+				return err
+			}
+			return sendResult(i, text)
+		}}
 	}
 
 	fail := func(format string, args ...any) {
 		panic("starlings: " + what + ": " + fmt.Sprintf(format, args...))
 	}
-	v := reflect.ValueOf(handler)
 	t := v.Type()
 	if v.Kind() != reflect.Func {
 		fail("handler must be a function, got %T", handler)
@@ -279,27 +305,30 @@ func setText(target reflect.Value, kind reflect.Kind, raw string) error {
 	case reflect.String:
 		target.SetString(raw)
 	case reflect.Bool:
-		var b bool
-		if _, err := fmt.Sscan(raw, &b); err != nil {
+		b, err := strconv.ParseBool(raw)
+		if err != nil {
 			return err
 		}
 		target.SetBool(b)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		var n int64
-		if _, err := fmt.Sscan(raw, &n); err != nil || target.OverflowInt(n) {
-			return fmt.Errorf("invalid")
+		n, err := strconv.ParseInt(raw, 10, target.Type().Bits())
+		if err != nil {
+			return err
 		}
 		target.SetInt(n)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		var n uint64
-		if _, err := fmt.Sscan(raw, &n); err != nil || target.OverflowUint(n) {
-			return fmt.Errorf("invalid")
+		n, err := strconv.ParseUint(raw, 10, target.Type().Bits())
+		if err != nil {
+			return err
 		}
 		target.SetUint(n)
 	case reflect.Float32, reflect.Float64:
-		var f float64
-		if _, err := fmt.Sscan(raw, &f); err != nil {
+		f, err := strconv.ParseFloat(raw, target.Type().Bits())
+		if err != nil {
 			return err
+		}
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return fmt.Errorf("expected a finite number")
 		}
 		target.SetFloat(f)
 	}

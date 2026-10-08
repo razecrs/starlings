@@ -288,6 +288,11 @@ func cloneCommandOptions(values []CommandOption) []CommandOption {
 //		}
 //	})
 func (c *Client) SyncCommands(ctx context.Context, guildID Snowflake) error {
+	c.rootClient().manualSync.Store(true)
+	return c.syncCommands(ctx, guildID)
+}
+
+func (c *Client) syncCommands(ctx context.Context, guildID Snowflake) error {
 	appID := c.ApplicationID()
 	if appID.IsZero() {
 		return errNotReady
@@ -307,7 +312,7 @@ func (c *Client) SyncCommands(ctx context.Context, guildID Snowflake) error {
 	} else {
 		current, err = c.GuildCommands(ctx, appID, guildID)
 	}
-	if err == nil && commandsMatch(defs, current) {
+	if err == nil && commandsMatch(defs, current, !guildID.IsZero()) {
 		c.log.Debug("starlings: commands already up to date", "count", len(defs))
 		return nil
 	}

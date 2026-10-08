@@ -51,6 +51,8 @@ type Client struct {
 	chunkMembers   bool
 	autoSync       bool
 	recoverPanics  bool
+	trimMemory     bool
+	trimLast       atomic.Int64 // time of the last guild or member burst event
 	envToken       bool
 	intentsSet     bool
 	dms            sync.Map // user ID -> DM channel ID
@@ -84,6 +86,7 @@ type Client struct {
 	slashHooked bool
 	syncGuild   *Snowflake
 	syncOnce    sync.Once
+	manualSync  atomic.Bool // the application called SyncCommands itself
 
 	ready     chan struct{}
 	readyOnce sync.Once
@@ -230,6 +233,7 @@ func New(opts ...Option) *Client {
 		requestTimeout: time.Minute,
 		recoverPanics:  true,
 		autoSync:       true,
+		trimMemory:     true,
 		envToken:       true,
 	}
 	c.rest = newREST(c)
@@ -262,8 +266,11 @@ func New(opts ...Option) *Client {
 	if c.chunkMembers {
 		c.installMemberChunking()
 	}
+	if c.trimMemory {
+		c.installMemoryTrim()
+	}
 	if c.syncGuild != nil {
-		c.installCommandSync()
+		c.installCommandSync(false)
 	}
 	return c
 }
@@ -303,6 +310,7 @@ func WithPanicRecovery(enabled bool) Option {
 //   - no automatic deferral of slow interaction handlers
 //   - no automatic command publishing
 //   - no recovery from handler panics
+//   - no return of startup memory to the operating system
 //
 // Options after Explicit can turn single behaviours back on:
 //
@@ -314,6 +322,7 @@ func Explicit() Option {
 		c.autoDefer = 0
 		c.autoSync = false
 		c.recoverPanics = false
+		c.trimMemory = false
 	}
 }
 

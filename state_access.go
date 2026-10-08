@@ -1,6 +1,7 @@
 package starlings
 
 import (
+	"slices"
 	"sort"
 	"time"
 )
@@ -10,6 +11,39 @@ type StateStats struct {
 	Guilds, Channels, Members, Users                  int
 	Roles, Emojis, Stickers, ThreadMembers            int
 	VoiceStates, Presences, Messages, MessageChannels int
+}
+
+// GuildInfo returns a snapshot of the guild's own fields without its resource
+// collections. Use it for a name, owner, icon, or Discord's reported member
+// count. Guild returns the full composed snapshot when you need the resources.
+func (s *State) GuildInfo(id Snowflake) (value Guild, ok bool) {
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("guilds.info", ok, 1, time.Since(started)) }()
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	value, ok = s.guilds[id]
+	value.Roles, value.Emojis, value.Stickers = nil, nil, nil
+	value.Members, value.Channels, value.Threads = nil, nil, nil
+	value.VoiceStates, value.Presences = nil, nil
+	value.StageInstances, value.GuildScheduledEvents, value.SoundboardSounds = nil, nil, nil
+	value.Features = append([]string(nil), value.Features...)
+	value.bindTo(s.client)
+	return value, ok
+}
+
+// MemberCount returns the number of cached members without cloning or sorting
+// them. Zero can mean an empty, disabled, or not-yet-populated cache. For the
+// total reported by Discord, read MemberCount from the returned GuildInfo.
+func (s *State) MemberCount(guildID Snowflake) (count int) {
+	if s.guard != nil {
+		started := time.Now()
+		defer func() { s.guard.cacheAccess("members.count", count > 0, 0, time.Since(started)) }()
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.members[guildID])
 }
 
 func (s *State) Guild(id Snowflake) (value Guild, ok bool) {
@@ -31,6 +65,9 @@ func (s *State) guildLocked(id Snowflake) (Guild, bool) {
 	if !ok {
 		return Guild{}, false
 	}
+	// Clone the base once. Indexed resources below are already copied into
+	// caller-owned slices; cloning the assembled guild would copy them twice.
+	v = cloneGuild(v)
 	if s.config.Roles {
 		v.Roles = make([]Role, 0, len(s.roles[id]))
 		for _, role := range s.roles[id] {
@@ -65,11 +102,7 @@ func (s *State) guildLocked(id Snowflake) (Guild, bool) {
 		sort.Slice(v.Threads, func(i, j int) bool { return v.Threads[i].ID < v.Threads[j].ID })
 	}
 	if s.config.Members {
-		v.Members = make([]Member, 0, len(s.members[id]))
-		for _, member := range s.members[id] {
-			v.Members = append(v.Members, cloneMember(member))
-		}
-		sort.Slice(v.Members, func(i, j int) bool { return v.Members[i].User.ID < v.Members[j].User.ID })
+		v.Members = s.membersLocked(id)
 	}
 	if s.config.Emojis {
 		v.Emojis = make([]GuildEmoji, 0, len(s.emojis[id]))
@@ -99,9 +132,8 @@ func (s *State) guildLocked(id Snowflake) (Guild, bool) {
 		}
 		sort.Slice(v.Presences, func(i, j int) bool { return v.Presences[i].User.ID < v.Presences[j].User.ID })
 	}
-	out := cloneGuild(v)
-	out.bindTo(s.client)
-	return out, true
+	v.bindTo(s.client)
+	return v, true
 }
 
 func (s *State) Channel(id Snowflake) (value Channel, ok bool) {
@@ -232,7 +264,14 @@ func (s *State) Guilds() []Guild {
 	var out []Guild
 	if s.guard != nil {
 		started := time.Now()
-		defer func() { s.guard.cacheAccess("guilds.all", len(out) > 0, len(out), time.Since(started)) }()
+		defer func() {
+			items := len(out)
+			for _, guild := range out {
+				items += len(guild.Channels) + len(guild.Threads) + len(guild.Members) + len(guild.Roles) + len(guild.Emojis) + len(guild.Stickers) + len(guild.VoiceStates) + len(guild.Presences)
+			}
+			s.guard.cacheUse("channels", "members", "roles", "emojis", "stickers", "voice_states", "presences")
+			s.guard.cacheAccess("guilds.all", len(out) > 0, items, time.Since(started))
+		}()
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -290,13 +329,26 @@ func (s *State) Members(guildID Snowflake) []Member {
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out = make([]Member, 0, len(s.members[guildID]))
-	for _, v := range s.members[guildID] {
-		v = cloneMember(v)
-		v.bindTo(s.client, guildID)
-		out = append(out, v)
+	out = s.membersLocked(guildID)
+	for n := range out {
+		out[n].bindTo(s.client, guildID)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].User.ID < out[j].User.ID })
+	return out
+}
+
+func (s *State) membersLocked(guildID Snowflake) []Member {
+	members := s.members[guildID]
+	// Sort compact IDs before cloning. Sorting Member structs repeatedly moves
+	// their strings, pointers and context bindings, while the IDs are 8 bytes.
+	ids := make([]Snowflake, 0, len(members))
+	for id := range members {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	out := make([]Member, len(ids))
+	for n, id := range ids {
+		out[n] = cloneMember(members[id])
+	}
 	return out
 }
 

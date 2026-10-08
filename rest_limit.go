@@ -262,7 +262,7 @@ func (b *bucket) update(h http.Header) {
 	reset := b.resetAt
 	if v, err := strconv.ParseFloat(resetAfter, 64); err == nil {
 		after := time.Duration(v * float64(time.Second))
-		reset = time.Now().Add(after + min(resetMargin, after/4))
+		reset = time.Now().Add(after + min(resetMargin, after/10))
 	}
 	if v, err := strconv.Atoi(remaining); err == nil {
 		// Responses to concurrent requests arrive in any order. Within one
@@ -280,11 +280,11 @@ func (b *bucket) update(h http.Header) {
 	b.refilled = false
 }
 
-// resetMargin is added to every bucket reset, up to a quarter of the window.
+// resetMargin is added to every bucket reset, up to a tenth of the window.
 // The reset time is measured from when the response arrived, so without a
 // margin a burst sent the moment the local clock says "reset" can reach
 // Discord just before its window ends.
-const resetMargin = 50 * time.Millisecond
+const resetMargin = 15 * time.Millisecond
 
 // settle ends a probe whose request got no response, such as a transport
 // error, so the next request can try instead.

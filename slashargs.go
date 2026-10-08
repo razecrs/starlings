@@ -2,8 +2,8 @@ package starlings
 
 import (
 	"fmt"
+	"math"
 	"reflect"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -41,9 +41,8 @@ type argPlan struct {
 }
 
 var (
-	commandNamePattern = regexp.MustCompile(`^[-_\p{L}\p{N}\p{Devanagari}\p{Thai}]{1,32}$`)
-	snowflakeType      = reflect.TypeFor[Snowflake]()
-	durationType       = reflect.TypeFor[time.Duration]()
+	snowflakeType = reflect.TypeFor[Snowflake]()
+	durationType  = reflect.TypeFor[time.Duration]()
 )
 
 func planArgsOf(t reflect.Type, command, description string) argPlan {
@@ -160,7 +159,16 @@ func planArgsOf(t reflect.Type, command, description string) argPlan {
 }
 
 func checkName(name string, fail func(string, ...any)) {
-	if !commandNamePattern.MatchString(name) || strings.ToLower(name) != name {
+	valid := utf8.ValidString(name) && strings.ToLower(name) == name
+	count := 0
+	for _, r := range name {
+		count++
+		if count > 32 || !(r == '-' || r == '_' || unicode.IsLetter(r) || unicode.IsNumber(r) || unicode.In(r, unicode.Devanagari, unicode.Thai)) {
+			valid = false
+			break
+		}
+	}
+	if !valid || count == 0 {
 		fail("%q is not a valid name: use 1-32 lowercase letters, digits, - or _", name)
 	}
 }
@@ -344,7 +352,10 @@ func ParseDuration(s string) (time.Duration, error) {
 		return 0, fmt.Errorf("starlings: empty duration")
 	}
 	if n, err := strconv.ParseFloat(s, 64); err == nil {
-		return time.Duration(n * float64(time.Second)), nil
+		return scaledDuration(n, time.Second)
+	}
+	if d, err := time.ParseDuration(s); err == nil {
+		return d, nil
 	}
 	var total time.Duration
 	for s != "" {
@@ -380,10 +391,28 @@ func ParseDuration(s string) (time.Duration, error) {
 			scale = time.Second
 		case "ms":
 			scale = time.Millisecond
+		case "us", "µs", "μs":
+			scale = time.Microsecond
+		case "ns":
+			scale = time.Nanosecond
 		default:
 			return 0, fmt.Errorf("starlings: unknown duration unit %q", unit)
 		}
-		total += time.Duration(value * float64(scale))
+		part, err := scaledDuration(value, scale)
+		if err != nil || part > time.Duration(math.MaxInt64)-total {
+			return 0, fmt.Errorf("starlings: duration is out of range")
+		}
+		total += part
 	}
 	return total, nil
+}
+
+func scaledDuration(value float64, unit time.Duration) (time.Duration, error) {
+	ns := value * float64(unit)
+	// MaxInt64 rounds up to 2^63 as a float; exclude that boundary before
+	// converting, otherwise a huge timeout silently becomes negative.
+	if math.IsNaN(ns) || math.IsInf(ns, 0) || ns >= float64(math.MaxInt64) || ns < float64(math.MinInt64) {
+		return 0, fmt.Errorf("starlings: duration is out of range")
+	}
+	return time.Duration(ns), nil
 }

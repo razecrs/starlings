@@ -1,12 +1,17 @@
 package starlings
 
 import (
+	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/coder/websocket"
 )
 
 func TestHandlerShapes(t *testing.T) {
@@ -136,12 +141,37 @@ func TestCommandsMatchIgnoresDiscordDefaults(t *testing.T) {
 	local := []ApplicationCommand{{Type: CommandChat, Name: "ping", Description: "Is the bot alive?"}}
 	remote := []ApplicationCommand{{ID: 5, ApplicationID: 2, Type: CommandChat, Name: "ping", Description: "Is the bot alive?",
 		Contexts: []InteractionContextType{0, 1, 2}, IntegrationTypes: []ApplicationIntegrationType{0}}}
-	if !commandsMatch(local, remote) {
+	if !commandsMatch(local, remote, false) {
 		t.Fatal("identical commands were reported as changed")
 	}
 	remote[0].Description = "old text"
-	if commandsMatch(local, remote) {
+	if commandsMatch(local, remote, false) {
 		t.Fatal("a changed description was not noticed")
+	}
+}
+
+// Discord's response for a guild command, as returned live: no contexts or
+// integration types, even when the definition set them.
+func TestGuildCommandsMatchWithoutContexts(t *testing.T) {
+	perms := PermissionModerateMembers
+	maxLen := 500
+	local := []ApplicationCommand{{Type: CommandChat, Name: "warn", Description: "Warn a member and record it",
+		DefaultMemberPermissions: &perms, Contexts: []InteractionContextType{InteractionContextGuild},
+		Options: []CommandOption{
+			{Type: OptionUser, Name: "user", Description: "Member to warn", Required: true},
+			{Type: OptionString, Name: "reason", Description: "Why", Required: true, MaxLength: &maxLen},
+		}}}
+	var remote []ApplicationCommand
+	raw := `[{"id":"1557567419109740675","application_id":"1504080099371257936","version":"1557567419592212542",
+		"default_member_permissions":"1099511627776","type":1,"name":"warn","description":"Warn a member and record it",
+		"guild_id":"1536740060316176406","options":[{"type":6,"name":"user","description":"Member to warn","required":true},
+		{"type":3,"name":"reason","description":"Why","required":true,"max_length":500}],"nsfw":false}]`
+	if err := jsonUnmarshalString(raw, &remote); err != nil {
+		t.Fatal(err)
+	}
+	if !commandsMatch(local, remote, true) {
+		t.Fatalf("live guild command did not match its definition:\n%s\n%s",
+			commandShape(local[0], local[0], true), commandShape(remote[0], local[0], true))
 	}
 }
 
@@ -213,4 +243,47 @@ func TestPanicRecoveryCanBeTurnedOff(t *testing.T) {
 		}
 	}()
 	c.routeInteraction(argsInteraction(c, "boom", `[]`, `{}`))
+}
+
+func TestAutoSyncStandsDownForManualSync(t *testing.T) {
+	old := autoSyncDelay
+	autoSyncDelay = 50 * time.Millisecond
+	defer func() { autoSyncDelay = old }()
+
+	rest := &callLog{}
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Header.Get("Upgrade") != "" {
+			return http.DefaultTransport.RoundTrip(r) // the fake gateway
+		}
+		recorder := httptest.NewRecorder()
+		if r.Method == http.MethodGet {
+			recorder.Header().Set("Content-Type", "application/json")
+			_, _ = recorder.WriteString("[]")
+		} else {
+			rest.ServeHTTP(recorder, r)
+		}
+		return recorder.Result(), nil
+	})
+	g := newFakeGateway(t, func(conn *websocket.Conn, f fakeFrame) {
+		if f.Op == OpIdentify {
+			writeDispatch(conn, 1, "READY", fakeReady)
+		}
+	})
+	c := g.client(WithHTTPClient(&http.Client{Transport: transport}))
+	c.Slash("ping", "Ping", func() string { return "pong" })
+	synced := make(chan struct{})
+	c.On(func(r *Ready) {
+		_ = r.Client().SyncCommands(t.Context(), 7)
+		close(synced)
+	})
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	go c.RunContext(ctx)
+	<-synced
+	time.Sleep(200 * time.Millisecond)
+	for _, call := range rest.get() {
+		if strings.HasPrefix(call, "PUT /applications/2/commands") {
+			t.Fatalf("published globally although the bot synced its guild itself: %v", rest.get())
+		}
+	}
 }

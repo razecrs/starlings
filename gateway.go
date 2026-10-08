@@ -58,6 +58,10 @@ type gateway struct {
 	writeMu  sync.Mutex
 	inflater *gatewayInflater
 
+	// pre is a connection opened while /gateway/bot was in flight. Only the
+	// run loop's goroutine touches it.
+	pre *preDial
+
 	// ackPending is set when a heartbeat goes out and cleared when Discord
 	// acknowledges it. A beat falling due while it is still set means the
 	// connection is a zombie.
@@ -158,15 +162,23 @@ func (g *gateway) connect(ctx context.Context, c *Client) (err error) {
 		resuming = false
 	}
 
-	query := "/?v=" + Version + "&encoding=json"
-	if c.compress {
-		query += "&compress=zlib-stream"
+	dialURL := c.gatewayDialURL(url)
+	var conn *websocket.Conn
+	if pre := g.pre; pre != nil {
+		g.pre = nil
+		if resuming {
+			pre.discard()
+		} else {
+			conn = pre.take(ctx, dialURL)
+		}
 	}
-	conn, _, err := websocket.Dial(ctx, url+query, &websocket.DialOptions{
-		HTTPClient: c.rest.http,
-	})
-	if err != nil {
-		return fmt.Errorf("dialing gateway: %w", err)
+	if conn == nil {
+		conn, _, err = websocket.Dial(ctx, dialURL, &websocket.DialOptions{
+			HTTPClient: c.rest.http,
+		})
+		if err != nil {
+			return fmt.Errorf("dialing gateway: %w", err)
+		}
 	}
 	conn.SetReadLimit(readLimit)
 	g.sends.reset(time.Now())
@@ -368,7 +380,11 @@ var errReconnect = errors.New("starlings: reconnect requested")
 // read from that same decoder.
 func (g *gateway) handleFrame(ctx context.Context, c *Client, data []byte) error {
 	dec := decoderPool.Get().(*jsontext.Decoder)
-	defer decoderPool.Put(dec)
+	if len(data) <= largeFrame {
+		// A decoder that read a large frame keeps a buffer that size; let it
+		// go rather than hold it in the pool.
+		defer decoderPool.Put(dec)
+	}
 	g.rdr.Reset(data)
 	// The option must be repeated here: Reset replaces the decoder's options
 	// rather than preserving the ones NewDecoder was given.
@@ -446,6 +462,9 @@ func (g *gateway) handleFrame(ctx context.Context, c *Client, data []byte) error
 			}
 			if n.Kind() != 'n' {
 				name = n.String()
+				if c.trimMemory {
+					c.noteStartupBurst(name)
+				}
 			}
 
 		case "d":
@@ -705,6 +724,10 @@ func (g *gateway) write(ctx context.Context, data []byte) error {
 	defer cancel()
 	return g.conn.Write(ctx, websocket.MessageText, data)
 }
+
+// largeFrame is the size above which gateway decoders are not kept, so a
+// burst of large GUILD_CREATE frames at startup does not stay resident.
+const largeFrame = 256 << 10
 
 // decoderPool reuses gateway frame decoders. Every frame goes through one, so
 // the saving compounds quickly on a busy bot.

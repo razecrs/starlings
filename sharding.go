@@ -11,15 +11,22 @@ import (
 const identifyWindow = 5 * time.Second
 
 func (c *Client) runAutoSharded(ctx context.Context) error {
+	// Most bots need one shard at the usual address, so connect to it while
+	// asking Discord how many shards to use. The connection is only
+	// identified on once the answer confirms it.
+	pre := c.startPreDial(ctx, defaultGatewayURL)
 	info, err := c.GatewayBot(ctx)
 	if err != nil {
+		pre.discard()
 		return fmt.Errorf("looking up gateway shards: %w", err)
 	}
 	count := max(info.Shards, 1)
 	c.gatewayBase = info.URL
 	if count == 1 {
+		c.gw.pre = pre
 		return c.gw.run(ctx, c)
 	}
+	pre.discard()
 	if info.SessionStartLimit.Remaining < count {
 		return fmt.Errorf("starlings: Discord recommends %d shards but only %d identify sessions remain", count, info.SessionStartLimit.Remaining)
 	}
@@ -89,6 +96,8 @@ func (c *Client) makeShards(count int, gatewayURL string) []*Client {
 			token: c.token, id: c.id,
 			intents: c.intents, log: c.log, rest: c.rest,
 			asyncEvents: c.asyncEvents, guard: c.guard,
+			recoverPanics: c.recoverPanics, autoDefer: c.autoDefer, trimMemory: c.trimMemory,
+			requestTimeout: c.requestTimeout, intentsSet: c.intentsSet,
 			shard: [2]int{id, count}, compress: c.compress,
 			gatewayBase: gatewayURL, initialState: c.initialState,
 			State: c.State, prefix: c.prefix,

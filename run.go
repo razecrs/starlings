@@ -47,6 +47,11 @@ func (c *Client) prepareRun() error {
 				"intents", strings.Join(privileged, ", "))
 		}
 	}
+	if c.guard != nil {
+		// Inferred intents are not known at construction time. Advice must
+		// describe the intents this connection will actually request.
+		c.guard.attach(c.State, c.asyncEvents, c.intents)
+	}
 	if c.autoSync && c.syncGuild == nil && len(c.SlashDefinitions()) > 0 {
 		var guild Snowflake
 		if raw := os.Getenv("DISCORD_GUILD_ID"); raw != "" {
@@ -57,29 +62,44 @@ func (c *Client) prepareRun() error {
 			guild = id
 		}
 		c.syncGuild = &guild
-		c.installCommandSync()
+		c.installCommandSync(true)
 	}
 	return nil
 }
 
 // installCommandSync publishes commands after the first READY.
-func (c *Client) installCommandSync() {
+//
+// Automatic publishing waits a moment after READY and stands down if the
+// application published commands itself in the meantime, so a bot that
+// manages its own commands, for example only in a development guild, never
+// has them published somewhere else.
+func (c *Client) installCommandSync(automatic bool) {
 	guildID := *c.syncGuild
+	delay := autoSyncDelay
 	internalOn(c, func(ready *Ready) {
 		if ready.Client().ApplicationID().IsZero() {
 			return
 		}
 		c.syncOnce.Do(func() {
 			go func() {
+				if automatic {
+					time.Sleep(delay)
+					if c.rootClient().manualSync.Load() {
+						return
+					}
+				}
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer cancel()
-				if err := ready.Client().SyncCommands(ctx, guildID); err != nil {
+				if err := ready.Client().syncCommands(ctx, guildID); err != nil {
 					c.log.Error("starlings: publishing commands", "err", err)
 				}
 			}()
 		})
 	})
 }
+
+// autoSyncDelay gives Ready handlers time to publish commands themselves.
+var autoSyncDelay = 3 * time.Second
 
 // inferIntents chooses intents from the registered handlers: Guilds always,
 // the intents each handled event needs, and message content for prefix
@@ -138,7 +158,10 @@ func loadDotEnv(path string) {
 // commandsMatch reports whether Discord already has exactly these commands.
 // Discord fills in defaults when it returns commands, so only the fields an
 // application sets are compared.
-func commandsMatch(local, remote []ApplicationCommand) bool {
+//
+// Discord drops contexts and integration types from guild commands, since
+// they only apply globally, so guild comparisons ignore them.
+func commandsMatch(local, remote []ApplicationCommand, guild bool) bool {
 	if len(local) != len(remote) {
 		return false
 	}
@@ -155,7 +178,7 @@ func commandsMatch(local, remote []ApplicationCommand) bool {
 	}
 	for _, want := range local {
 		got, ok := byKey[key(want)]
-		if !ok || commandShape(want, want) != commandShape(got, want) {
+		if !ok || commandShape(want, want, guild) != commandShape(got, want, guild) {
 			return false
 		}
 	}
@@ -164,7 +187,7 @@ func commandsMatch(local, remote []ApplicationCommand) bool {
 
 // commandShape renders the comparable part of cmd. like is the local
 // definition: optional fields it leaves unset are not compared.
-func commandShape(cmd, like ApplicationCommand) string {
+func commandShape(cmd, like ApplicationCommand, guild bool) string {
 	shape := struct {
 		Description string
 		Options     []CommandOption
@@ -178,10 +201,10 @@ func commandShape(cmd, like ApplicationCommand) string {
 		Permissions: cmd.DefaultMemberPermissions,
 		NSFW:        cmd.NSFW,
 	}
-	if len(like.Contexts) > 0 {
+	if len(like.Contexts) > 0 && !guild {
 		shape.Contexts = slices.Sorted(slices.Values(cmd.Contexts))
 	}
-	if len(like.IntegrationTypes) > 0 {
+	if len(like.IntegrationTypes) > 0 && !guild {
 		shape.Integration = slices.Sorted(slices.Values(cmd.IntegrationTypes))
 	}
 	data, _ := json.Marshal(shape)

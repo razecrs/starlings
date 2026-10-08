@@ -28,6 +28,19 @@ The zero-configuration cache tracks:
 `State.Stats()` returns counts without copying the cached objects. Singular
 lookups and plural snapshots are available for every category.
 
+Avoid copying a whole server just to read its name or count its members:
+
+```go
+guild, ok := bot.State.GuildInfo(guildID) // metadata, no resource collections
+cached := bot.State.MemberCount(guildID) // count only, no cloning or sorting
+```
+
+`guild.MemberCount` is Discord's reported total; `cached` is how many members
+are actually retained. A disabled or not-yet-filled member cache returns zero.
+Use `State.Guild` when you do need a complete, mutable snapshot. Guard suggests
+these smaller reads when it observes repeatedly copying large collections;
+it never disables caches itself.
+
 Message caches are bounded independently per channel. They retain insertion
 order, update edited messages in place, keep reaction counts and pin
 timestamps coherent, and attach the cached objects to message delete events.

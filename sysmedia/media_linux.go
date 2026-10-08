@@ -4,9 +4,10 @@ package sysmedia
 
 import (
 	"fmt"
-	"github.com/razecrs/starlings"
 	"strings"
 	"time"
+
+	"github.com/razecrs/starlings"
 
 	"github.com/godbus/dbus/v5"
 )

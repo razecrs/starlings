@@ -15,8 +15,9 @@ const defaultAutoDefer = 2200 * time.Millisecond
 // WithAutoDefer sets how long a slash command, button, select, or modal
 // handler may run before Starlings acknowledges the interaction for it. Fast
 // handlers answer normally in one request. A slow handler's later Reply or
-// UpdateMessage edits the deferred response instead, so it never fails with
-// "unknown interaction". The default is 2.2 seconds; zero turns it off.
+// UpdateMessage edits the deferred response instead. This helps meet Discord's
+// deadline but cannot guarantee delivery during an outage or blocked dispatch.
+// The default is 2.2 seconds; zero turns it off.
 //
 // It applies to interactions received over the gateway. Interactions served
 // by InteractionHandler must answer before the handler returns.

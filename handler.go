@@ -54,6 +54,7 @@ func (r *SlashRoute) Run(fn HandlerFunc) *SlashRoute {
 	}
 	return r.update(func(e *slashEntry) {
 		name := "/" + e.def.Name
+		e.task = nil
 		e.fn = func(i *InteractionCreate) { i.c.runHandler(name, i, fn) }
 	})
 }
@@ -62,6 +63,8 @@ func (r *SlashRoute) Run(fn HandlerFunc) *SlashRoute {
 // sets Discord's default member permissions, and also checks the permissions
 // Discord reports with each use, because server admins can override the
 // default. Members without them get a private message naming what is missing.
+// Uses without guild membership are denied as well; there are no guild
+// permissions to establish in a DM.
 func (r *SlashRoute) Require(permissions Permissions) *SlashRoute {
 	r.Permissions(permissions)
 	return r.update(func(e *slashEntry) { e.require = permissions })
@@ -83,7 +86,7 @@ func (e *slashEntry) checkPermissions(i *InteractionCreate) bool {
 		if i.Member != nil {
 			have = i.Member.Permissions
 		}
-		if missing := have.Missing(e.require); missing != 0 && i.Member != nil {
+		if missing := have.Missing(e.require); missing != 0 {
 			i.c.replyFailure(i, "You need "+missing.HumanString()+" to use this.")
 			return false
 		}
@@ -135,7 +138,11 @@ func (c *Client) runHandler(name string, i *InteractionCreate, fn HandlerFunc) {
 		c.replyFailure(i, user.UserMessage())
 		return
 	}
-	c.log.Error("starlings: command failed", "command", name, "user", i.Invoker().ID, "err", err)
+	var userID Snowflake
+	if invoker := i.Invoker(); invoker != nil {
+		userID = invoker.ID
+	}
+	c.log.Error("starlings: command failed", "command", name, "user", userID, "err", err)
 	c.replyFailure(i, genericFailure)
 }
 

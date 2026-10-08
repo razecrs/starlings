@@ -42,6 +42,7 @@ type Guard struct {
 
 type guardCacheMetric struct {
 	calls, hits, items uint64
+	uses               uint64 // dependencies read by composed/derived accessors
 }
 
 type guardKey struct {
@@ -150,8 +151,7 @@ func (g *Guard) cacheUse(names ...string) {
 			metric = &guardCacheMetric{}
 			g.cache[name] = metric
 		}
-		metric.calls++
-		metric.hits++
+		metric.uses++
 	}
 	g.mu.Unlock()
 }
@@ -443,9 +443,10 @@ func guardCacheFindings(config StateConfig, stats StateStats, cache map[string]g
 				metric.calls += candidate.calls
 				metric.hits += candidate.hits
 				metric.items += candidate.items
+				metric.uses += candidate.uses
 			}
 		}
-		if category.enabled && category.items > 0 && metric.calls == 0 {
+		if category.enabled && category.items > 0 && metric.calls == 0 && metric.uses == 0 {
 			findings = append(findings, GuardFinding{
 				Severity: "info", Area: "cache." + category.name,
 				Evidence:       fmt.Sprintf("%d cached objects and no observed reads", category.items),
@@ -472,10 +473,16 @@ func guardCacheFindings(config StateConfig, stats StateStats, cache map[string]g
 	}
 	for name, metric := range cache {
 		if strings.HasSuffix(name, ".all") && metric.calls >= 5 && metric.items/metric.calls >= 100 {
+			recommendation := "prefer an ID-based accessor in hot code; full snapshots clone and sort every returned object"
+			if name == "guilds.all" {
+				recommendation = "use State.GuildInfo for guild metadata or State.MemberCount for cached counts; keep State.Guild for full snapshots"
+			} else if name == "members.all" {
+				recommendation = "use State.Member for an ID lookup or State.MemberCount for a cached count; keep State.Members when you need every member"
+			}
 			findings = append(findings, GuardFinding{
 				Severity: "warning", Area: "cache." + name,
 				Evidence:       fmt.Sprintf("average snapshot contains %d objects", metric.items/metric.calls),
-				Recommendation: "prefer an ID-based accessor in hot code; full snapshots clone and sort every returned object",
+				Recommendation: recommendation,
 			})
 		}
 	}
