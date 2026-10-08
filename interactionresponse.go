@@ -83,26 +83,30 @@ func (i *InteractionCreate) Deferred() bool {
 //
 // Discord gives you **three seconds**. If the work takes longer, call Defer
 // first, which shows "thinking..." and buys fifteen minutes for Followup.
+//
+// If Starlings already deferred the interaction because the handler was slow
+// (see WithAutoDefer), a message or update is delivered by editing the
+// deferred response instead, so the handler does not need to know.
 func (i *InteractionCreate) Respond(ctx context.Context, resp InteractionResponse) error {
-	if !i.claimAnswer(resp.Type) {
-		return ErrInteractionAlreadyAnswered
-	}
-	if i.respondHTTP != nil {
-		return i.respondHTTP(ctx, resp, nil)
-	}
-	return i.c.rest.do(ctx, request{
-		Method: http.MethodPost,
-		Path:   "/interactions/" + i.ID.String() + "/" + i.Token + "/callback",
-		Route:  i.route("POST", "/callback"),
-		Body:   resp,
-	}, nil)
+	return i.respond(ctx, resp, nil)
 }
 
 // RespondFiles sends the initial interaction response with file attachments.
 func (i *InteractionCreate) RespondFiles(ctx context.Context, resp InteractionResponse, files ...File) error {
+	return i.respond(ctx, resp, files)
+}
+
+func (i *InteractionCreate) respond(ctx context.Context, resp InteractionResponse, files []File) error {
 	if !i.claimAnswer(resp.Type) {
+		if auto := i.auto; auto != nil && auto.fired.Load() {
+			return i.afterAutoDefer(ctx, auto, resp, files)
+		}
 		return ErrInteractionAlreadyAnswered
 	}
+	return i.sendCallback(ctx, resp, files)
+}
+
+func (i *InteractionCreate) sendCallback(ctx context.Context, resp InteractionResponse, files []File) error {
 	if i.respondHTTP != nil {
 		return i.respondHTTP(ctx, resp, files)
 	}

@@ -49,6 +49,7 @@ type Client struct {
 	gatewayBase  string
 	initialState *presence
 	chunkMembers bool
+	autoDefer    time.Duration
 	extMu        sync.Mutex
 	ext          map[any]any
 	shardsMu     sync.RWMutex
@@ -200,6 +201,7 @@ func New(token string, opts ...Option) *Client {
 		State:      newState(),
 		compress:   true,
 		autoShards: true,
+		autoDefer:  defaultAutoDefer,
 	}
 	c.rest = newREST(c)
 

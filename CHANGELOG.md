@@ -55,6 +55,16 @@ them.
 - `WithMemberChunking` requests the full member list for guilds whose
   GUILD_CREATE was incomplete.
 
+### Interactions
+
+- Slash commands, buttons, selects, and modals are acknowledged
+  automatically when the handler has not answered after 2.2 seconds. A fast
+  handler still answers in one request. A slow handler's `Reply` or
+  `UpdateMessage` edits the deferred response, and an ephemeral reply after a
+  public deferral is sent as an ephemeral follow-up. `WithAutoDefer` changes
+  the delay, and `NoAutoDefer` turns it off for a command that opens a modal
+  after slow work.
+
 ### REST
 
 - A route whose limits are not known yet sends one request first, then as

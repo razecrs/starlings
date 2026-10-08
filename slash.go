@@ -21,6 +21,7 @@ type slashEntry struct {
 	task         TaskFunc
 	private      bool
 	timeout      time.Duration
+	noAutoDefer  bool
 }
 
 type commandKey struct {
@@ -148,7 +149,13 @@ func (c *Client) routeInteraction(i *InteractionCreate) {
 		handler := c.components[componentKey{i.Type, i.Data.CustomID}]
 		c.slashMu.RUnlock()
 		if handler.fn != nil {
+			kind := CallbackDeferredUpdateMessage
+			if i.Type == InteractionModalSubmit && i.Message == nil {
+				kind = CallbackDeferredChannelMessage // a modal opened from a command
+			}
+			i.armAutoDefer(c.autoDefer, kind, false)
 			handler.fn(i)
+			i.stopAutoDefer()
 		}
 		return
 	}
@@ -181,7 +188,11 @@ func (c *Client) routeInteraction(i *InteractionCreate) {
 	if entry.task != nil {
 		c.runTask(runner, entry, i)
 	} else if entry.fn != nil {
+		if !entry.noAutoDefer {
+			i.armAutoDefer(c.autoDefer, CallbackDeferredChannelMessage, entry.private)
+		}
 		entry.fn(i)
+		i.stopAutoDefer()
 	}
 }
 

@@ -374,6 +374,10 @@ type InteractionCreate struct {
 	// un-copyable and fail vet.
 	answered int32 `json:"-"`
 
+	// auto is set when Starlings will defer the interaction if the handler
+	// has not answered in time.
+	auto *autoDeferState `json:"-"`
+
 	// respondHTTP is set only for interactions received through an HTTP
 	// endpoint. Gateway interactions leave it nil and use the REST callback.
 	respondHTTP func(context.Context, InteractionResponse, []File) error
