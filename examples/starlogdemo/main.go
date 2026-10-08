@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/razecrs/starlings"
+	_ "github.com/razecrs/starlings/starpets"
 )
 
 type demoPlayback struct{ started time.Time }

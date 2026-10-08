@@ -1,8 +1,9 @@
-package starlings
+package voice
 
 import (
 	"context"
 	"io"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -58,7 +59,7 @@ func TestBufferedAudioSenderPacesAndFlushes(t *testing.T) {
 		closed: make(chan struct{}),
 	}
 	transport := &recordingAudioTransport{done: make(chan struct{})}
-	sender := newBufferedAudioSender(discardLogger(), provider, transport, time.Millisecond, 3, 8)
+	sender := newBufferedAudioSender(slog.New(slog.DiscardHandler), provider, transport, time.Millisecond, 3, 8)
 	sender.Open()
 
 	select {
@@ -90,7 +91,7 @@ func TestBufferedAudioSenderPacesAndFlushes(t *testing.T) {
 func TestBufferedAudioSenderPlaysShortClip(t *testing.T) {
 	provider := &sliceOpusProvider{frames: [][]byte{{1}, {2}}, closed: make(chan struct{})}
 	transport := &recordingAudioTransport{done: make(chan struct{})}
-	sender := newBufferedAudioSender(discardLogger(), provider, transport, time.Millisecond, 10, 10)
+	sender := newBufferedAudioSender(slog.New(slog.DiscardHandler), provider, transport, time.Millisecond, 10, 10)
 	sender.Open()
 
 	select {

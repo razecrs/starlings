@@ -1,24 +1,31 @@
 # Voice and soundboard
 
+Voice lives in its own package, so bots without voice never link its
+dependencies:
+
+```go
+import "github.com/razecrs/starlings/voice"
+```
+
 ## Requirements
 
 The bot needs `Connect` and `Speak` in the target channel. Include `IntentGuildVoiceStates`; joining depends on `VOICE_STATE_UPDATE` and `VOICE_SERVER_UPDATE` from the main gateway.
 
-`ConnectVoice` waits for those events. Run it from a goroutine if the trigger is a gateway handler.
+`voice.Connect` waits for those events. Run it from a goroutine if the trigger is a gateway handler.
 
 ```go
 go func() {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	voice, err := bot.ConnectVoice(ctx, guildID, channelID)
+	conn, err := voice.Connect(ctx, bot, guildID, channelID)
 	if err != nil {
 		log.Print(err)
 		return
 	}
-	defer voice.Close(context.Background())
+	defer conn.Close(context.Background())
 
-	track, err := voice.PlayFile(context.Background(), "song.mp3")
+	track, err := conn.PlayFile(context.Background(), "song.mp3")
 	if err != nil {
 		log.Print(err)
 		return
@@ -42,7 +49,7 @@ Bot accounts can publish audio but cannot publish camera or Go Live video throug
 
 ## Supply Opus directly
 
-Implement `OpusProvider` when the application already has Discord-ready frames:
+Implement `voice.OpusProvider` when the application already has Discord-ready frames:
 
 ```go
 type source struct { /* decoder state */ }
@@ -54,7 +61,7 @@ func (s *source) ProvideOpusFrame() ([]byte, error) {
 
 func (s *source) Close() {}
 
-if err := voice.Play(&source{}); err != nil {
+if err := conn.Play(&source{}); err != nil {
 	log.Fatal(err)
 }
 ```
@@ -64,7 +71,7 @@ Do not return Ogg pages or an `OpusHead`; return the encoded Opus packet payload
 ## Receive packets
 
 ```go
-err := voice.Receive(func(packet *starlings.OpusPacket) error {
+err := conn.Receive(func(packet *voice.OpusPacket) error {
 	copyForWorker := append([]byte(nil), packet.Opus...)
 	go consume(packet.UserID, copyForWorker)
 	return nil
@@ -81,4 +88,4 @@ The callback runs on the voice receive loop. Hand decoding, storage, speech reco
 
 ## Shutdown and failures
 
-`VoiceConnection.Close` stops playback and leaves the channel. `Client.Close` also closes the voice manager. Treat context cancellation as an expected stop; log handshake, permission, DAVE, and FFmpeg errors because reconnecting the main gateway cannot repair a missing channel permission or missing executable.
+`Connection.Close` stops playback and leaves the channel. `Client.Close` also closes the voice manager. Treat context cancellation as an expected stop; log handshake, permission, DAVE, and FFmpeg errors because reconnecting the main gateway cannot repair a missing channel permission or missing executable.

@@ -7,12 +7,14 @@ import (
 	"os/exec"
 
 	"github.com/razecrs/starlings"
+	_ "github.com/razecrs/starlings/starpets"
+	"github.com/razecrs/starlings/sysmedia"
 )
 
 func main() {
 	logs := starlings.NewStarlog("my bot",
 		starlings.StarlogColor(true),
-		starlings.StarlogSystemMedia(),
+		sysmedia.Option(),
 		starlings.StarlogWithPets(
 			starlings.NewStarPet(starlings.StarPetNova),
 			starlings.NewStarPet(starlings.StarPetComet),

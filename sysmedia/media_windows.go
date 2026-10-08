@@ -1,9 +1,10 @@
 //go:build windows
 
-package starlings
+package sysmedia
 
 import (
 	"fmt"
+	"github.com/razecrs/starlings"
 	"strings"
 	"time"
 	"unsafe"
@@ -18,7 +19,7 @@ type windowsStarlogMedia struct {
 	manager *control.GlobalSystemMediaTransportControlsSessionManager
 }
 
-func newStarlogPlatformMedia() (starlogPlatformMedia, error) {
+func open() (starlings.StarlogMediaReader, error) {
 	// RO_INIT_MULTITHREADED = 1. RPC_E_CHANGED_MODE is harmless when the host
 	// already initialized this thread with another apartment model.
 	if err := ole.RoInitialize(1); err != nil && !strings.Contains(err.Error(), "0x80010106") {
@@ -26,43 +27,43 @@ func newStarlogPlatformMedia() (starlogPlatformMedia, error) {
 	}
 	operation, err := control.GlobalSystemMediaTransportControlsSessionManagerRequestAsync()
 	if err != nil {
-		return nil, fmt.Errorf("starlings: request Windows media manager: %w", err)
+		return nil, fmt.Errorf("sysmedia: request Windows media manager: %w", err)
 	}
 	result, err := awaitWinRT(operation, control.SignatureGlobalSystemMediaTransportControlsSessionManager)
 	if err != nil {
-		return nil, fmt.Errorf("starlings: await Windows media manager: %w", err)
+		return nil, fmt.Errorf("sysmedia: await Windows media manager: %w", err)
 	}
 	return &windowsStarlogMedia{manager: (*control.GlobalSystemMediaTransportControlsSessionManager)(result)}, nil
 }
 
-func (w *windowsStarlogMedia) close() {
+func (w *windowsStarlogMedia) Close() {
 	if w.manager != nil {
 		w.manager.Release()
 	}
 }
 
-func (w *windowsStarlogMedia) read() (StarlogPlayback, error) {
+func (w *windowsStarlogMedia) ReadPlayback() (starlings.StarlogPlayback, error) {
 	session, err := w.manager.GetCurrentSession()
 	if err != nil || session == nil {
-		return StarlogPlayback{}, err
+		return starlings.StarlogPlayback{}, err
 	}
 	defer session.Release()
 
 	provider, _ := session.GetSourceAppUserModelId()
 	propertiesOperation, err := session.TryGetMediaPropertiesAsync()
 	if err != nil {
-		return StarlogPlayback{}, err
+		return starlings.StarlogPlayback{}, err
 	}
 	propertiesResult, err := awaitWinRT(propertiesOperation, control.SignatureGlobalSystemMediaTransportControlsSessionMediaProperties)
 	if err != nil {
-		return StarlogPlayback{}, err
+		return starlings.StarlogPlayback{}, err
 	}
 	properties := (*control.GlobalSystemMediaTransportControlsSessionMediaProperties)(propertiesResult)
 	defer properties.Release()
 	title, _ := properties.GetTitle()
 	artist, _ := properties.GetArtist()
 
-	playback := StarlogPlayback{Provider: mediaProviderName(provider), Title: title, Artist: artist}
+	playback := starlings.StarlogPlayback{Provider: mediaProviderName(provider), Title: title, Artist: artist}
 	if info, infoErr := session.GetPlaybackInfo(); infoErr == nil && info != nil {
 		status, _ := info.GetPlaybackStatus()
 		playback.Playing = status == control.GlobalSystemMediaTransportControlsSessionPlaybackStatusPlaying
@@ -81,7 +82,7 @@ func (w *windowsStarlogMedia) read() (StarlogPlayback, error) {
 
 func awaitWinRT(operation *foundation.IAsyncOperation, resultSignature string) (unsafe.Pointer, error) {
 	if operation == nil {
-		return nil, fmt.Errorf("starlings: nil WinRT async operation")
+		return nil, fmt.Errorf("sysmedia: nil WinRT async operation")
 	}
 	defer operation.Release()
 	type completion struct {
@@ -94,7 +95,7 @@ func awaitWinRT(operation *foundation.IAsyncOperation, resultSignature string) (
 		ole.NewGUID(delegateIID),
 		func(_ *foundation.AsyncOperationCompletedHandler, async *foundation.IAsyncOperation, status foundation.AsyncStatus) {
 			if status != foundation.AsyncStatusCompleted {
-				done <- completion{err: fmt.Errorf("starlings: WinRT media operation status %d", status)}
+				done <- completion{err: fmt.Errorf("sysmedia: WinRT media operation status %d", status)}
 				return
 			}
 			result, err := async.GetResults()

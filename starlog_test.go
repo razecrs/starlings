@@ -5,6 +5,8 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -107,7 +109,47 @@ func TestStarlogBuildWriterDrivesPetMood(t *testing.T) {
 	}
 }
 
+// useBundledPetArt registers the starpets PNGs for one test. The root package
+// cannot import starpets, which imports it, so the files are read from disk.
+func useBundledPetArt(t *testing.T) {
+	t.Helper()
+	files := map[StarPetVariant]string{StarPetNova: "luma.png", StarPetComet: "comet.png", StarPetNebula: "nebula.png"}
+	for variant, name := range files {
+		data, err := os.ReadFile(filepath.Join("starpets", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		RegisterStarPetArt(variant, data)
+	}
+	t.Cleanup(func() {
+		for variant := range files {
+			RegisterStarPetArt(variant, nil)
+		}
+	})
+}
+
+func TestStarPetsUseTerminalFramesWithoutArt(t *testing.T) {
+	for _, variant := range []StarPetVariant{StarPetNova, StarPetComet, StarPetNebula} {
+		pet := NewStarPet(variant)
+		if pet.Picture != nil {
+			t.Fatalf("pet %q has a picture before any art was registered", pet.Name)
+		}
+		if len(pet.Calm) == 0 || len(pet.Build) == 0 {
+			t.Fatalf("pet %q has no terminal frames", pet.Name)
+		}
+	}
+}
+
+func TestStarPetSheetsShareRegisteredArt(t *testing.T) {
+	useBundledPetArt(t)
+	a, b := NewStarPet(StarPetComet), NewStarPet(StarPetComet)
+	if a.Picture == nil || b.Picture == nil || &a.Picture.PNG[0] != &b.Picture.PNG[0] {
+		t.Fatal("pets built from one variant should share the registered PNG")
+	}
+}
+
 func TestStarPetAnimationAndVariants(t *testing.T) {
+	useBundledPetArt(t)
 	nova := NewStarPet(StarPetNova)
 	comet := NewStarPet(StarPetComet)
 	nebula := NewStarPet(StarPetNebula)
@@ -309,6 +351,7 @@ func TestStarlogSinkCanForceOneColourAndBeRemoved(t *testing.T) {
 }
 
 func TestStarPetPictureRendersTrueColourFrames(t *testing.T) {
+	useBundledPetArt(t)
 	for _, variant := range []StarPetVariant{StarPetNova, StarPetComet, StarPetNebula} {
 		pet := NewStarPet(variant)
 		frame, ok := renderStarPetPicture(pet, StarlogBuild, time.Unix(0, 0), 22)

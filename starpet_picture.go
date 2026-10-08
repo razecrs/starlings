@@ -25,15 +25,19 @@ type StarlogSpriteSheet struct {
 	Warn  []int
 	Error []int
 
-	once  sync.Once
-	image image.Image
-	err   error
+	once   sync.Once
+	frames []*image.NRGBA // one small image per cell; nil when the cell is empty
+	err    error
 
-	framesOnce sync.Once
-	frames     []image.Rectangle
-	renderMu   sync.RWMutex
-	rendered   map[starlogRenderedFrame]StarlogFrame
+	renderMu sync.RWMutex
+	rendered map[starlogRenderedFrame]StarlogFrame
 }
+
+// starlogFrameDetail is how many source pixels each frame keeps per terminal
+// cell of the preferred width. Rendering samples at most two pixels per cell,
+// so four leaves headroom without holding the full-resolution sheet: a
+// 1448x1086 sheet would otherwise stay resident as about 6 MB of RGBA.
+const starlogFrameDetail = 4
 
 type starlogRenderedFrame struct {
 	frame int
@@ -51,31 +55,108 @@ func NewStarlogSpriteSheet(png []byte, columns, rows, width int) *StarlogSpriteS
 	}
 }
 
-func newBuiltInSpriteSheet(png []byte) *StarlogSpriteSheet {
+var starPetArt struct {
+	mu  sync.RWMutex
+	png [3][]byte
+}
+
+// RegisterStarPetArt sets the pixel-art sheet NewStarPet uses for variant.
+// The starpets package registers Starlings' bundled art when it is imported;
+// without it, pets draw with terminal characters only. The slice is shared,
+// not copied, so the caller must not modify it afterwards.
+func RegisterStarPetArt(variant StarPetVariant, png []byte) {
+	if int(variant) >= len(starPetArt.png) {
+		return
+	}
+	starPetArt.mu.Lock()
+	starPetArt.png[variant] = png
+	starPetArt.mu.Unlock()
+}
+
+// newBuiltInSpriteSheet shares the registered PNG instead of copying it, so
+// every pet built from the same variant costs no extra image memory.
+func newBuiltInSpriteSheet(variant StarPetVariant) *StarlogSpriteSheet {
+	if int(variant) >= len(starPetArt.png) {
+		return nil
+	}
+	starPetArt.mu.RLock()
+	png := starPetArt.png[variant]
+	starPetArt.mu.RUnlock()
 	if len(png) == 0 {
 		return nil
 	}
-	sheet := NewStarlogSpriteSheet(png, 4, 3, 22)
-	sheet.Calm = []int{0, 1, 2, 3}
-	sheet.Build = []int{4, 5, 6, 7}
-	sheet.Warn = []int{8, 9}
-	sheet.Error = []int{10, 11}
-	return sheet
+	return &StarlogSpriteSheet{
+		PNG:     png,
+		Columns: 4,
+		Rows:    3,
+		Width:   22,
+		Calm:    []int{0, 1, 2, 3},
+		Build:   []int{4, 5, 6, 7},
+		Warn:    []int{8, 9},
+		Error:   []int{10, 11},
+	}
 }
 
-func (s *StarlogSpriteSheet) decoded() (image.Image, error) {
+// prepare decodes the sheet once, crops each cell to its visible pixels, and
+// keeps a small copy of every frame. The decoded sheet is released afterwards.
+func (s *StarlogSpriteSheet) prepare() error {
 	if s == nil {
-		return nil, fmt.Errorf("starlings: nil Starlog sprite sheet")
+		return fmt.Errorf("starlings: nil Starlog sprite sheet")
 	}
 	s.once.Do(func() {
-		s.image, _, s.err = image.Decode(bytes.NewReader(s.PNG))
+		if s.Columns <= 0 || s.Rows <= 0 {
+			s.err = fmt.Errorf("starlings: sprite sheet needs columns and rows")
+			return
+		}
+		source, _, err := image.Decode(bytes.NewReader(s.PNG))
+		if err != nil {
+			s.err = err
+			return
+		}
+		width := s.Width
+		if width <= 0 {
+			width = 22
+		}
+		maxWidth := width * starlogFrameDetail
+		bounds := source.Bounds()
+		cellWidth, cellHeight := bounds.Dx()/s.Columns, bounds.Dy()/s.Rows
+		s.frames = make([]*image.NRGBA, s.Columns*s.Rows)
+		for index := range s.frames {
+			x, y := index%s.Columns, index/s.Columns
+			cell := image.Rect(
+				bounds.Min.X+x*cellWidth,
+				bounds.Min.Y+y*cellHeight,
+				bounds.Min.X+(x+1)*cellWidth,
+				bounds.Min.Y+(y+1)*cellHeight,
+			)
+			visible := cropVisibleBounds(source, cell)
+			if visible.Empty() {
+				continue
+			}
+			s.frames[index] = shrinkFrame(source, visible, maxWidth)
+		}
 	})
-	return s.image, s.err
+	return s.err
+}
+
+// shrinkFrame copies area into a new image no wider than maxWidth, keeping
+// the aspect ratio. Colours are stored un-premultiplied, as samplePicture
+// expects.
+func shrinkFrame(source image.Image, area image.Rectangle, maxWidth int) *image.NRGBA {
+	width := min(area.Dx(), maxWidth)
+	height := max(1, area.Dy()*width/max(1, area.Dx()))
+	small := image.NewNRGBA(image.Rect(0, 0, width, height))
+	sub := &starlogSubImage{source: source, bounds: area}
+	for y := range height {
+		for x := range width {
+			small.SetNRGBA(x, y, color.NRGBA(samplePicture(sub, x, y, width, height)))
+		}
+	}
+	return small
 }
 
 func (s *StarlogSpriteSheet) frame(mood StarlogMood, now time.Time, delay time.Duration) (image.Image, int, bool) {
-	source, err := s.decoded()
-	if err != nil || s.Columns <= 0 || s.Rows <= 0 {
+	if err := s.prepare(); err != nil {
 		return nil, 0, false
 	}
 	frames := s.Calm
@@ -114,25 +195,10 @@ func (s *StarlogSpriteSheet) frame(mood StarlogMood, now time.Time, delay time.D
 	if frame < 0 || frame >= s.Columns*s.Rows {
 		return nil, 0, false
 	}
-	bounds := source.Bounds()
-	cellWidth, cellHeight := bounds.Dx()/s.Columns, bounds.Dy()/s.Rows
-	s.framesOnce.Do(func() {
-		s.frames = make([]image.Rectangle, s.Columns*s.Rows)
-		for index := range s.frames {
-			x, y := index%s.Columns, index/s.Columns
-			cell := image.Rect(
-				bounds.Min.X+x*cellWidth,
-				bounds.Min.Y+y*cellHeight,
-				bounds.Min.X+(x+1)*cellWidth,
-				bounds.Min.Y+(y+1)*cellHeight,
-			)
-			s.frames[index] = cropVisibleBounds(source, cell)
-		}
-	})
-	if s.frames[frame].Empty() {
+	if s.frames[frame] == nil {
 		return nil, 0, false
 	}
-	return &starlogSubImage{source: source, bounds: s.frames[frame]}, frame, true
+	return s.frames[frame], frame, true
 }
 
 func cropVisibleBounds(source image.Image, cell image.Rectangle) image.Rectangle {

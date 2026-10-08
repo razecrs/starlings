@@ -48,7 +48,7 @@ Prefix commands are built in through `Command`. Slash definitions and handlers a
 
 ## Voice
 
-Starlings voice uses gateway v8, current AEAD transport modes, and DAVE. `ConnectVoice` completes the handshake, `PlayFile` uses FFmpeg, `Play` accepts a custom `OpusProvider`, and `Receive` exposes incoming Opus packets.
+Starlings voice uses gateway v8, current AEAD transport modes, and DAVE. `voice.Connect` completes the handshake, `PlayFile` uses FFmpeg, `Play` accepts a custom `voice.OpusProvider`, and `Receive` exposes incoming Opus packets.
 
 Do not carry over assumptions from DiscordGo's legacy voice transport. Joining waits for main-gateway voice events, so call it outside the event loop or from a goroutine.
 

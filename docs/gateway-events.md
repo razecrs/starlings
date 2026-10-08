@@ -251,10 +251,10 @@ They belong to the Social SDK surface and are irrelevant to ordinary bots.
 ## Voice gateway
 
 A separate websocket with its own opcodes, reached after pairing
-`VOICE_STATE_UPDATE` with `VOICE_SERVER_UPDATE`. `ConnectVoice` handles this
+`VOICE_STATE_UPDATE` with `VOICE_SERVER_UPDATE`. `voice.Connect` handles this
 gateway, UDP discovery, transport encryption, DAVE setup, heartbeats,
 reconnects, speaking state, and session descriptions. Applications normally
-use `PlayFile`, `PlayOpus`, or `Receive` rather than sending these opcodes.
+use `PlayFile`, `Play`, or `Receive` rather than sending these opcodes.
 
 | code | name |
 | --- | --- |

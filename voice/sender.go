@@ -1,4 +1,4 @@
-package starlings
+package voice
 
 import (
 	"context"
@@ -36,7 +36,7 @@ func (t connAudioTransport) SetSpeaking(ctx context.Context, flags discordvoice.
 	return t.conn.SetSpeaking(ctx, flags)
 }
 
-func newStarlingsAudioSender(logger *slog.Logger, provider discordvoice.OpusFrameProvider, conn discordvoice.Conn) discordvoice.AudioSender {
+func newAudioSender(logger *slog.Logger, provider discordvoice.OpusFrameProvider, conn discordvoice.Conn) discordvoice.AudioSender {
 	return newBufferedAudioSender(logger, provider, connAudioTransport{conn: conn}, voiceFrameInterval, voicePrebuffer, voiceBufferSize)
 }
 
@@ -196,14 +196,14 @@ func (s *bufferedAudioSender) handleError(message string, err error) {
 	if errors.Is(err, net.ErrClosed) || errors.Is(err, discordvoice.ErrGatewayNotConnected) || s.ctx.Err() != nil {
 		return
 	}
-	s.logger.Error("starlings: "+message, "err", err)
+	s.logger.Error("voice: "+message, "err", err)
 }
 
 func (s *bufferedAudioSender) logProviderError(errCh <-chan error) {
 	select {
 	case err := <-errCh:
 		if err != nil && s.ctx.Err() == nil {
-			s.logger.Error("starlings: reading voice audio", "err", err)
+			s.logger.Error("voice: reading voice audio", "err", err)
 		}
 	default:
 	}

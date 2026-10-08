@@ -1,4 +1,4 @@
-package starlings
+package voice
 
 import (
 	"bufio"
@@ -10,60 +10,39 @@ import (
 
 	discordvoice "github.com/disgoorg/disgo/voice"
 	"github.com/disgoorg/snowflake/v2"
+
+	"github.com/razecrs/starlings"
 )
 
-func TestConnectVoiceValidatesIDsAndReadiness(t *testing.T) {
-	c := New("token")
-	if _, err := c.ConnectVoice(context.Background(), 0, 2); err == nil {
-		t.Fatal("ConnectVoice accepted an empty guild ID")
+func TestConnectValidatesIDsAndReadiness(t *testing.T) {
+	c := starlings.New("token")
+	if _, err := Connect(context.Background(), c, 0, 2); err == nil {
+		t.Fatal("Connect accepted an empty guild ID")
 	}
-	if _, err := c.ConnectVoice(context.Background(), 1, 0); err == nil {
-		t.Fatal("ConnectVoice accepted an empty channel ID")
+	if _, err := Connect(context.Background(), c, 1, 0); err == nil {
+		t.Fatal("Connect accepted an empty channel ID")
 	}
-	if _, err := c.ConnectVoice(context.Background(), 1, 2); !errors.Is(err, errNotReady) {
-		t.Fatalf("ConnectVoice before READY = %v, want errNotReady", err)
+	if _, err := Connect(context.Background(), c, 1, 2); !errors.Is(err, ErrNotReady) {
+		t.Fatalf("Connect before READY = %v, want ErrNotReady", err)
 	}
 }
 
 func TestVoiceEventConversion(t *testing.T) {
-	state := toVoiceStateUpdate(&VoiceStateUpdate{VoiceState: VoiceState{
+	state := toVoiceStateUpdate(&starlings.VoiceStateUpdate{VoiceState: starlings.VoiceState{
 		GuildID: 1, ChannelID: 2, UserID: 3, SessionID: "session", SelfMute: true,
 	}})
 	if state.GuildID != 1 || state.ChannelID == nil || *state.ChannelID != 2 || state.UserID != 3 || !state.SelfMute {
 		t.Fatalf("bad voice state conversion: %#v", state)
 	}
 
-	left := toVoiceStateUpdate(&VoiceStateUpdate{VoiceState: VoiceState{GuildID: 1}})
+	left := toVoiceStateUpdate(&starlings.VoiceStateUpdate{VoiceState: starlings.VoiceState{GuildID: 1}})
 	if left.ChannelID != nil {
 		t.Fatalf("disconnected channel = %v, want nil", left.ChannelID)
 	}
 
-	server := toVoiceServerUpdate(&VoiceServerUpdate{GuildID: 1, Token: "token", Endpoint: "voice.test"})
+	server := toVoiceServerUpdate(&starlings.VoiceServerUpdate{GuildID: 1, Token: "token", Endpoint: "voice.test"})
 	if server.Endpoint == nil || *server.Endpoint != "voice.test" || server.Token != "token" {
 		t.Fatalf("bad voice server conversion: %#v", server)
-	}
-}
-
-func TestVoiceBookkeepingUsesOrderedInternalHandlers(t *testing.T) {
-	c := New("token", WithAsyncEvents(true))
-	c.self.Store(&User{ID: 1})
-	before := make(map[string]int, 2)
-	for _, name := range []string{"VOICE_STATE_UPDATE", "VOICE_SERVER_UPDATE"} {
-		if slot := c.slotFor(name); slot != nil {
-			before[name] = slot.internal
-		}
-	}
-	manager, err := c.voiceManager()
-	if err != nil {
-		t.Fatalf("voiceManager: %v", err)
-	}
-	defer manager.close(context.Background())
-
-	for _, name := range []string{"VOICE_STATE_UPDATE", "VOICE_SERVER_UPDATE"} {
-		slot := c.slotFor(name)
-		if slot == nil || slot.internal != before[name]+1 {
-			t.Fatalf("%s internal handlers = %v, want %d", name, slot, before[name]+1)
-		}
 	}
 }
 

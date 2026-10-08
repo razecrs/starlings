@@ -71,16 +71,16 @@ const (
 	StarPetNebula
 )
 
-// NewStarPet returns Starlog's original animated mascot. The shape is kept in
-// code for now; the animation contract lets us swap in polished original art
-// later without breaking users.
+// NewStarPet returns one of Starlog's animated mascots. Import the starpets
+// package to draw them with the bundled pixel art; otherwise they use
+// terminal characters.
 func NewStarPet(variant StarPetVariant) StarlogPet {
 	pet := StarlogPet{
 		Name:       "Luma",
 		Variant:    "nova",
 		Color:      220,
 		FrameDelay: 160 * time.Millisecond,
-		Picture:    newBuiltInSpriteSheet(starPetLumaPNG),
+		Picture:    newBuiltInSpriteSheet(StarPetNova),
 		Calm: []StarlogFrame{
 			{`    *`, `  .---.`, ` ( o o )`, `  \_^_/`, `   / \`},
 			{`   *`, `  .---.`, ` ( - - )`, `  \_^_/`, `   / \`},
@@ -103,10 +103,10 @@ func NewStarPet(variant StarPetVariant) StarlogPet {
 	switch variant {
 	case StarPetComet:
 		pet.Name, pet.Variant, pet.Color = "Comet", "comet", 45
-		pet.Picture = newBuiltInSpriteSheet(starPetCometPNG)
+		pet.Picture = newBuiltInSpriteSheet(StarPetComet)
 	case StarPetNebula:
 		pet.Name, pet.Variant, pet.Color = "Nebula", "nebula", 213
-		pet.Picture = newBuiltInSpriteSheet(starPetNebulaPNG)
+		pet.Picture = newBuiltInSpriteSheet(StarPetNebula)
 	}
 	return pet
 }
@@ -194,13 +194,6 @@ func StarlogWithPlayback(source StarlogPlaybackSource) StarlogOption {
 	return func(s *Starlog) { s.FollowPlayback(source) }
 }
 
-// StarlogSystemMedia uses the operating system's active media session as a
-// fallback when no attached Discord voice/file source is currently active.
-// Windows uses System Media Transport Controls and Linux uses MPRIS.
-func StarlogSystemMedia() StarlogOption {
-	return func(s *Starlog) { s.systemMedia = true }
-}
-
 // StarlogStreamArt controls whether warning, error, and build records show a
 // compact pet frame when the fullscreen dashboard is disabled.
 func StarlogStreamArt(enabled bool) StarlogOption {
@@ -272,7 +265,7 @@ type Starlog struct {
 	rateSamples []starlogRateSample
 	cpu         starlogCPUSample
 	playback    StarlogPlaybackSource
-	systemMedia bool
+	mediaOpen   func() (StarlogMediaReader, error)
 	media       *starlogSystemMedia
 
 	writeMu         sync.Mutex
@@ -341,6 +334,21 @@ func NewStarlog(name string, options ...StarlogOption) *Starlog {
 	return s
 }
 
+// starlogRunner is how the client drives Starlog. Holding the interface
+// rather than *Starlog keeps the dashboard renderer out of bots that never
+// call WithStarlog.
+type starlogRunner interface {
+	Attach(*Client)
+	Start(context.Context) bool
+	Close() error
+}
+
+// Starlog returns the Starlog attached with WithStarlog, or nil.
+func (c *Client) Starlog() *Starlog {
+	s, _ := c.rootClient().starlog.(*Starlog)
+	return s
+}
+
 // WithStarlog installs Starlog as the client's logger and attaches live bot
 // metrics. RunContext automatically starts and restores the TUI.
 func WithStarlog(log *Starlog) Option {
@@ -405,8 +413,8 @@ func (s *Starlog) Start(ctx context.Context) bool {
 		}
 		ctx, cancel := context.WithCancel(ctx)
 		s.stop = cancel
-		if s.systemMedia {
-			s.media = newStarlogSystemMedia(ctx)
+		if s.mediaOpen != nil {
+			s.media = newStarlogSystemMedia(ctx, s.mediaOpen)
 		}
 		s.restoreTerminal = prepareStarlogInteraction()
 		s.active.Store(true)

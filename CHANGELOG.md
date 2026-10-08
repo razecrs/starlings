@@ -1,5 +1,45 @@
 # Changelog
 
+## v0.1.2 (unreleased)
+
+This release makes optional features cost nothing for bots that do not use
+them.
+
+### Smaller by default
+
+- Voice moved to `github.com/razecrs/starlings/voice`. A bot that does not
+  import it no longer links the voice, DAVE, and MLS modules. A minimal bot
+  now links three modules instead of sixteen.
+- System media detection for Starlog moved to
+  `github.com/razecrs/starlings/sysmedia`, so WinRT and D-Bus are linked only
+  when it is used.
+- Starlog's dashboard renderer is linked only when `WithStarlog` is used.
+- The pet pixel art moved to `github.com/razecrs/starlings/starpets`. Import
+  it for its side effect to keep the pictured pets; without it, pets use
+  terminal frames. The `starlings_small` build tag is no longer needed.
+- Pictured pets keep small per-frame images instead of the full decoded
+  sheets. Three pets now hold about 1 MB instead of about 18 MB.
+
+### Changed
+
+| v0.1.1 | v0.1.2 |
+| --- | --- |
+| `bot.ConnectVoice(ctx, guild, channel)` | `voice.Connect(ctx, bot, guild, channel)` |
+| `starlings.VoiceConnection` | `voice.Connection` |
+| `starlings.OpusProvider`, `OpusPacket` | `voice.OpusProvider`, `voice.OpusPacket` |
+| `starlings.NewFFmpegOpusProvider` | `voice.NewFFmpegOpusProvider` |
+| `starlings.StarlogSystemMedia()` | `sysmedia.Option()` |
+| bundled pet art | `import _ "github.com/razecrs/starlings/starpets"` |
+
+### Added
+
+- `Client.Extension` keeps one value per client for add-on packages and
+  closes it with the client.
+- `OnOrdered` registers a handler that runs in gateway order before
+  application handlers, even with asynchronous events.
+- `Client.Starlog`, `StarlogMediaSource`, `StarlogMediaReader`, and
+  `RegisterStarPetArt` let other packages extend Starlog.
+
 ## v0.1.1
 
 This release is about production behaviour and the parts of the API that felt

@@ -1,6 +1,6 @@
 //go:build windows
 
-package starlings
+package sysmedia
 
 import (
 	"os"
@@ -11,12 +11,12 @@ func TestWindowsSystemMediaIntegration(t *testing.T) {
 	if os.Getenv("STARLINGS_TEST_SYSTEM_MEDIA") == "" {
 		t.Skip("set STARLINGS_TEST_SYSTEM_MEDIA=1 to query the desktop media session")
 	}
-	reader, err := newStarlogPlatformMedia()
+	reader, err := open()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reader.close()
-	playback, err := reader.read()
+	defer reader.Close()
+	playback, err := reader.ReadPlayback()
 	if err != nil {
 		t.Fatal(err)
 	}

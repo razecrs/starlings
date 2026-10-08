@@ -123,22 +123,22 @@ Starlings Guard records bounded timing and error metrics for manual work. `Guard
 ## Voice
 
 ```go
-voice, err := bot.ConnectVoice(ctx, guildID, channelID)
+conn, err := voice.Connect(ctx, bot, guildID, channelID)
 if err != nil {
 	log.Fatal(err)
 }
-defer voice.Close(context.Background())
+defer conn.Close(context.Background())
 
-track, err := voice.PlayFile(ctx, "song.mp3")
+track, err := conn.PlayFile(ctx, "song.mp3")
 if err != nil {
 	log.Fatal(err)
 }
 log.Print(track.Wait())
 ```
 
-FFmpeg supplies the decoder and may read the audio track from a video file. Discord does not let bot accounts publish camera or Go Live video. `OpusProvider` is the lower-level path for applications that already produce 48 kHz Opus frames.
+FFmpeg supplies the decoder and may read the audio track from a video file. Discord does not let bot accounts publish camera or Go Live video. `voice.OpusProvider` is the lower-level path for applications that already produce 48 kHz Opus frames.
 
-Voice negotiates Discord's current AEAD modes and joins the DAVE MLS group before playback. It can also receive other users' Opus packets. See [`examples/voice`](examples/voice/main.go) and [`examples/soundboard`](examples/soundboard/main.go).
+Voice is the `github.com/razecrs/starlings/voice` package, so bots that do not import it do not link it. It negotiates Discord's current AEAD modes and joins the DAVE MLS group before playback. It can also receive other users' Opus packets. See [`examples/voice`](examples/voice/main.go) and [`examples/soundboard`](examples/soundboard/main.go).
 
 ## Starlog
 

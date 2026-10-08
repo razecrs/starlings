@@ -7,7 +7,7 @@ Starlog can be a fullscreen terminal dashboard, a styled streaming logger, a sta
 ```go
 logs := starlings.NewStarlog("my bot",
 	starlings.StarlogDashboard(),
-	starlings.StarlogSystemMedia(),
+	sysmedia.Option(),
 	starlings.StarlogWithPets(
 		starlings.NewStarPet(starlings.StarPetNova),
 		starlings.NewStarPet(starlings.StarPetComet),
@@ -15,6 +15,18 @@ logs := starlings.NewStarlog("my bot",
 
 bot := starlings.New(token, starlings.WithStarlog(logs))
 ```
+
+The media strip and the pixel-art pets come from two optional packages, so
+bots that do not use them do not link WinRT, D-Bus, or about 5 MB of images:
+
+```go
+import (
+	"github.com/razecrs/starlings/sysmedia"
+	_ "github.com/razecrs/starlings/starpets"
+)
+```
+
+Without `starpets`, pets draw with terminal characters.
 
 `WithStarlog` attaches shard status and starts/stops the display with `RunContext`. If Starlog is used without a client, call `Start` and `Close` yourself.
 
@@ -36,7 +48,7 @@ logs := starlings.NewStarlog("worker",
 
 - `StarlogDashboard` and `StarlogStreaming` choose fullscreen or records.
 - `StarlogWithPet`, `StarlogWithPets`, and `StarlogNoPets` choose the mascot layout.
-- `StarlogSystemMedia` reads Windows media sessions or Linux MPRIS when voice is idle.
+- `sysmedia.Option` reads Windows media sessions or Linux MPRIS when voice is idle. `StarlogMediaSource` accepts any other `StarlogMediaReader`.
 - `StarlogWithPlayback` follows any `StarlogPlaybackSource`; attached FFmpeg voice playback is detected automatically.
 - `StarlogStreamArt` controls compact reaction art in streaming mode.
 - `StarlogHistory` is a bounded record count, not an unbounded log buffer.

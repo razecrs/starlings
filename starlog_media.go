@@ -16,29 +16,40 @@ type starlogSystemMedia struct {
 	snapshot atomic.Pointer[starlogMediaSnapshot]
 }
 
-type starlogPlatformMedia interface {
-	read() (StarlogPlayback, error)
-	close()
+// StarlogMediaReader reads the operating system's current media session. The
+// sysmedia package provides readers for Windows and Linux.
+type StarlogMediaReader interface {
+	ReadPlayback() (StarlogPlayback, error)
+	Close()
 }
 
-func newStarlogSystemMedia(ctx context.Context) *starlogSystemMedia {
+// StarlogMediaSource shows the operating system's media session in the
+// now-playing strip when no attached Discord voice or file source is active.
+// open runs when the dashboard starts, on an OS thread reserved for the
+// reader, and Starlog polls the reader once a second. Most bots use
+// sysmedia.Option instead of calling this directly.
+func StarlogMediaSource(open func() (StarlogMediaReader, error)) StarlogOption {
+	return func(s *Starlog) { s.mediaOpen = open }
+}
+
+func newStarlogSystemMedia(ctx context.Context, open func() (StarlogMediaReader, error)) *starlogSystemMedia {
 	media := &starlogSystemMedia{}
-	go media.run(ctx)
+	go media.run(ctx, open)
 	return media
 }
 
-func (s *starlogSystemMedia) run(ctx context.Context) {
+func (s *starlogSystemMedia) run(ctx context.Context, open func() (StarlogMediaReader, error)) {
 	// WinRT apartments are thread-affine. Keeping the poller on one OS thread
 	// also costs nothing on MPRIS platforms and makes platform adapters simple.
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	reader, err := newStarlogPlatformMedia()
-	if err != nil {
+	reader, err := open()
+	if err != nil || reader == nil {
 		return
 	}
-	defer reader.close()
+	defer reader.Close()
 	poll := func() {
-		playback, err := reader.read()
+		playback, err := reader.ReadPlayback()
 		if err != nil || playback.Title == "" {
 			s.snapshot.Store(nil)
 			return

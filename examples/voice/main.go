@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/razecrs/starlings"
+	"github.com/razecrs/starlings/voice"
 )
 
 func main() {
@@ -61,7 +62,7 @@ func play(bot *starlings.Client, guild *starlings.GuildCreate, channelID starlin
 	}
 
 	joinCtx, cancelJoin := context.WithTimeout(context.Background(), 15*time.Second)
-	connection, err := bot.ConnectVoice(joinCtx, guild.ID, channelID)
+	connection, err := voice.Connect(joinCtx, bot, guild.ID, channelID)
 	cancelJoin()
 	if err != nil {
 		status("voice test failed to connect: %v", err)

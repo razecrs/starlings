@@ -1,9 +1,10 @@
 //go:build linux
 
-package starlings
+package sysmedia
 
 import (
 	"fmt"
+	"github.com/razecrs/starlings"
 	"strings"
 	"time"
 
@@ -14,7 +15,7 @@ type linuxStarlogMedia struct {
 	bus *dbus.Conn
 }
 
-func newStarlogPlatformMedia() (starlogPlatformMedia, error) {
+func open() (starlings.StarlogMediaReader, error) {
 	bus, err := dbus.ConnectSessionBus()
 	if err != nil {
 		return nil, err
@@ -22,14 +23,14 @@ func newStarlogPlatformMedia() (starlogPlatformMedia, error) {
 	return &linuxStarlogMedia{bus: bus}, nil
 }
 
-func (l *linuxStarlogMedia) close() { _ = l.bus.Close() }
+func (l *linuxStarlogMedia) Close() { _ = l.bus.Close() }
 
-func (l *linuxStarlogMedia) read() (StarlogPlayback, error) {
+func (l *linuxStarlogMedia) ReadPlayback() (starlings.StarlogPlayback, error) {
 	var names []string
 	if err := l.bus.BusObject().Call("org.freedesktop.DBus.ListNames", 0).Store(&names); err != nil {
-		return StarlogPlayback{}, err
+		return starlings.StarlogPlayback{}, err
 	}
-	var fallback StarlogPlayback
+	var fallback starlings.StarlogPlayback
 	for _, name := range names {
 		if !strings.HasPrefix(name, "org.mpris.MediaPlayer2.") {
 			continue
@@ -48,24 +49,24 @@ func (l *linuxStarlogMedia) read() (StarlogPlayback, error) {
 	return fallback, nil
 }
 
-func readMPRIS(object dbus.BusObject, busName string) (StarlogPlayback, error) {
+func readMPRIS(object dbus.BusObject, busName string) (starlings.StarlogPlayback, error) {
 	status, err := mprisString(object, "PlaybackStatus")
 	if err != nil {
-		return StarlogPlayback{}, err
+		return starlings.StarlogPlayback{}, err
 	}
 	metadataVariant, err := object.GetProperty("org.mpris.MediaPlayer2.Player.Metadata")
 	if err != nil {
-		return StarlogPlayback{}, err
+		return starlings.StarlogPlayback{}, err
 	}
 	metadata, ok := metadataVariant.Value().(map[string]dbus.Variant)
 	if !ok {
-		return StarlogPlayback{}, fmt.Errorf("starlings: invalid MPRIS metadata")
+		return starlings.StarlogPlayback{}, fmt.Errorf("sysmedia: invalid MPRIS metadata")
 	}
 	provider := strings.TrimPrefix(busName, "org.mpris.MediaPlayer2.")
 	if identity, identityErr := mprisInterfaceString(object, "org.mpris.MediaPlayer2.Identity"); identityErr == nil && identity != "" {
 		provider = identity
 	}
-	playback := StarlogPlayback{
+	playback := starlings.StarlogPlayback{
 		Provider: provider,
 		Title:    mprisMetadataString(metadata, "xesam:title"),
 		Artist:   strings.Join(mprisMetadataStrings(metadata, "xesam:artist"), ", "),

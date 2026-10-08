@@ -48,8 +48,8 @@ type Client struct {
 	autoShards   bool
 	gatewayBase  string
 	initialState *presence
-	voiceMu      sync.Mutex
-	voice        *voiceManager
+	extMu        sync.Mutex
+	ext          map[any]any
 	shardsMu     sync.RWMutex
 	shards       []*Client
 	shardRoot    *Client
@@ -58,7 +58,7 @@ type Client struct {
 	// to read from handlers and other goroutines.
 	State   *State
 	guard   *Guard
-	starlog *Starlog
+	starlog starlogRunner
 
 	// Prefix commands, registered with Command.
 	prefix    string
@@ -327,14 +327,7 @@ func (c *Client) WaitReady(ctx context.Context) error {
 func (c *Client) Close() error {
 	c.closeOnce.Do(func() {
 		c.stopTasks()
-		c.voiceMu.Lock()
-		voice := c.voice
-		c.voiceMu.Unlock()
-		if voice != nil {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			voice.close(ctx)
-			cancel()
-		}
+		c.closeExtensions()
 		if c.cancel != nil {
 			c.cancel()
 		}

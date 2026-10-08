@@ -1,4 +1,4 @@
-package starlings
+package voice
 
 import (
 	"bufio"
@@ -16,6 +16,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/razecrs/starlings"
 )
 
 // FFmpegOpusProvider decodes anything FFmpeg understands into the 20 ms Opus
@@ -49,14 +51,14 @@ type FFmpegOpusProvider struct {
 // playback process; cancelling it stops FFmpeg.
 func NewFFmpegOpusProvider(ctx context.Context, path string) (*FFmpegOpusProvider, error) {
 	if path == "" {
-		return nil, errors.New("starlings: FFmpeg input path is empty")
+		return nil, errors.New("voice: FFmpeg input path is empty")
 	}
 	if _, err := os.Stat(path); err != nil {
-		return nil, fmt.Errorf("starlings: FFmpeg input: %w", err)
+		return nil, fmt.Errorf("voice: FFmpeg input: %w", err)
 	}
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
-		return nil, errors.New("starlings: ffmpeg is not installed or not on PATH")
+		return nil, errors.New("voice: ffmpeg is not installed or not on PATH")
 	}
 
 	processCtx, cancel := context.WithCancel(ctx)
@@ -76,13 +78,13 @@ func NewFFmpegOpusProvider(ctx context.Context, path string) (*FFmpegOpusProvide
 	p.stdout, err = p.cmd.StdoutPipe()
 	if err != nil {
 		cancel()
-		return nil, fmt.Errorf("starlings: opening FFmpeg output: %w", err)
+		return nil, fmt.Errorf("voice: opening FFmpeg output: %w", err)
 	}
 	p.reader = bufio.NewReaderSize(p.stdout, 64*1024)
 	if err = p.cmd.Start(); err != nil {
 		cancel()
 		_ = p.stdout.Close()
-		return nil, fmt.Errorf("starlings: starting FFmpeg: %w", err)
+		return nil, fmt.Errorf("voice: starting FFmpeg: %w", err)
 	}
 	go func() {
 		err := p.cmd.Wait()
@@ -101,7 +103,7 @@ func NewFFmpegOpusProvider(ctx context.Context, path string) (*FFmpegOpusProvide
 }
 
 // PlayFile starts an FFmpeg provider and plays it through the connection.
-func (v *VoiceConnection) PlayFile(ctx context.Context, path string) (*FFmpegOpusProvider, error) {
+func (v *Connection) PlayFile(ctx context.Context, path string) (*FFmpegOpusProvider, error) {
 	provider, err := NewFFmpegOpusProvider(ctx, path)
 	if err != nil {
 		return nil, err
@@ -142,15 +144,15 @@ func (p *FFmpegOpusProvider) ProvideOpusFrame() ([]byte, error) {
 
 // StarlogPlayback reports progress from Opus frames actually consumed by the
 // voice sender, so buffering and network stalls cannot make the UI drift.
-func (p *FFmpegOpusProvider) StarlogPlayback() StarlogPlayback {
+func (p *FFmpegOpusProvider) StarlogPlayback() starlings.StarlogPlayback {
 	if p == nil {
-		return StarlogPlayback{}
+		return starlings.StarlogPlayback{}
 	}
 	position := time.Duration(p.frames.Load()) * 20 * time.Millisecond
 	if p.duration > 0 && position > p.duration {
 		position = p.duration
 	}
-	return StarlogPlayback{
+	return starlings.StarlogPlayback{
 		Provider: "Discord voice", Title: p.title, Artist: p.artist, Position: position,
 		Duration: p.duration, Playing: p.playing.Load(),
 	}
@@ -201,7 +203,7 @@ func (p *FFmpegOpusProvider) readPage() error {
 		return err
 	}
 	if !bytes.Equal(header[:4], []byte("OggS")) || header[4] != 0 {
-		return errors.New("starlings: FFmpeg returned invalid Ogg Opus data")
+		return errors.New("voice: FFmpeg returned invalid Ogg Opus data")
 	}
 	lacing := make([]byte, int(header[26]))
 	if _, err := io.ReadFull(p.reader, lacing); err != nil {
