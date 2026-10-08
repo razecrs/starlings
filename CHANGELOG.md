@@ -95,6 +95,21 @@ user.Send("a direct message")
   them again at runtime, since server admins can override the default.
   `SlashRoute.BotNeeds` checks the bot's permissions in the channel. Both
   answer with the missing permission names.
+- `NewEmbed` with `SetDescription`, `SetColor`, `SetURL`, and
+  `SetTimestamp`. The embed helpers shorten text to Discord's limits and fill
+  empty field values, so a long user-supplied value cannot make a message
+  fail. `ColorBlurple`, `ColorGreen`, `ColorRed`, and others name Discord's
+  palette. `ReplyEmbed`, `ReplyEmbedEphemeral`, `SendEmbed`.
+- `OnComponent` and `OnModal` accept routes with parameters, such as
+  `ticket:close:{id}`; read them with `Param`, `ParamID`, and `ParamInt`.
+  `CustomID` builds matching IDs and escapes values.
+- `Client.Pager` registers a paged view with previous and next buttons. It
+  stores nothing, so pages keep working after a restart, and only the person
+  who opened it can turn the pages.
+- `Snowflake` implements `database/sql` `Scanner` and `driver.Valuer`, and
+  text marshalling, so IDs can be stored without converting them.
+- `WithRequestTimeout` bounds REST calls made without a deadline, including
+  calls from resource methods. The default is one minute.
 - `ParseDuration` reads lengths of time such as `10m`, `1h30m`, or `3d`.
 - A panic in any event handler is logged with its stack instead of stopping
   the process.

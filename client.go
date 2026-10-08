@@ -37,25 +37,26 @@ type Client struct {
 	asyncEvents bool
 
 	// Gateway session state.
-	gw           gateway
-	seq          atomic.Int64
-	sessionID    atomic.Pointer[string]
-	resumeURL    atomic.Pointer[string]
-	self         atomic.Pointer[User]
-	appID        atomic.Uint64
-	shard        [2]int
-	compress     bool
-	autoShards   bool
-	gatewayBase  string
-	initialState *presence
-	chunkMembers bool
-	dms          sync.Map // user ID -> DM channel ID
-	autoDefer    time.Duration
-	extMu        sync.Mutex
-	ext          map[any]any
-	shardsMu     sync.RWMutex
-	shards       []*Client
-	shardRoot    *Client
+	gw             gateway
+	seq            atomic.Int64
+	sessionID      atomic.Pointer[string]
+	resumeURL      atomic.Pointer[string]
+	self           atomic.Pointer[User]
+	appID          atomic.Uint64
+	shard          [2]int
+	compress       bool
+	autoShards     bool
+	gatewayBase    string
+	initialState   *presence
+	chunkMembers   bool
+	dms            sync.Map // user ID -> DM channel ID
+	autoDefer      time.Duration
+	requestTimeout time.Duration
+	extMu          sync.Mutex
+	ext            map[any]any
+	shardsMu       sync.RWMutex
+	shards         []*Client
+	shardRoot      *Client
 
 	// State is the gateway-maintained cache. It is ready immediately and safe
 	// to read from handlers and other goroutines.
@@ -73,6 +74,7 @@ type Client struct {
 	slashMu     sync.RWMutex
 	slashes     map[commandKey]slashEntry
 	components  map[componentKey]componentHandler
+	patterns    []customIDPattern
 	tasks       *taskRunner
 	taskLimit   int
 	slashHooked bool
@@ -166,6 +168,13 @@ var botIdentity = ClientIdentity{Browser: "starlings", Device: "starlings", User
 // device strings in the identify payload, and the REST User-Agent.
 func WithIdentity(id ClientIdentity) Option { return func(c *Client) { c.id = id } }
 
+// WithRequestTimeout bounds REST calls whose context has no deadline,
+// including time spent waiting for rate limits. The default is one minute;
+// zero leaves such calls unbounded. A deadline on the context always wins.
+func WithRequestTimeout(d time.Duration) Option {
+	return func(c *Client) { c.requestTimeout = max(d, 0) }
+}
+
 // WithPacing sets the minimum interval between any two REST requests the
 // client makes - a global gate in front of the rate limiter, applied one
 // request at a time. The default is zero, meaning as fast as Discord's rate
@@ -196,13 +205,14 @@ func WithStatus(status Status, activity Activity) Option {
 // New does no I/O. Register handlers, then call Run.
 func New(token string, opts ...Option) *Client {
 	c := &Client{
-		id:         botIdentity,
-		log:        slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})),
-		ready:      make(chan struct{}),
-		State:      newState(),
-		compress:   true,
-		autoShards: true,
-		autoDefer:  defaultAutoDefer,
+		id:             botIdentity,
+		log:            slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})),
+		ready:          make(chan struct{}),
+		State:          newState(),
+		compress:       true,
+		autoShards:     true,
+		autoDefer:      defaultAutoDefer,
+		requestTimeout: time.Minute,
 	}
 	c.rest = newREST(c)
 

@@ -147,16 +147,13 @@ func (r *SlashRoute) update(fn func(*slashEntry)) *SlashRoute {
 func (c *Client) routeInteraction(i *InteractionCreate) {
 	c = c.rootClient()
 	if i.Type == InteractionMessageComponent || i.Type == InteractionModalSubmit {
-		c.slashMu.RLock()
-		handler := c.components[componentKey{i.Type, i.Data.CustomID}]
-		c.slashMu.RUnlock()
-		if handler.fn != nil {
+		if fn := c.componentRoute(i); fn != nil {
 			kind := CallbackDeferredUpdateMessage
 			if i.Type == InteractionModalSubmit && i.Message == nil {
 				kind = CallbackDeferredChannelMessage // a modal opened from a command
 			}
 			i.armAutoDefer(c.autoDefer, kind, false)
-			handler.fn(i)
+			fn(i)
 			i.stopAutoDefer()
 		}
 		return

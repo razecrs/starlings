@@ -1,6 +1,7 @@
 package starlings
 
 import (
+	"database/sql/driver"
 	"encoding/json/jsontext"
 	"fmt"
 	"strconv"
@@ -139,4 +140,51 @@ func MustID(s string) Snowflake {
 		panic("starlings: " + s + " is not a valid Discord ID: " + err.Error())
 	}
 	return id
+}
+
+// Value stores a snowflake in a database as its decimal text, which every SQL
+// engine can hold without losing precision. Zero is stored as NULL.
+func (s Snowflake) Value() (driver.Value, error) {
+	if s == 0 {
+		return nil, nil
+	}
+	return s.String(), nil
+}
+
+// Scan reads a snowflake stored as text, an integer, or NULL.
+func (s *Snowflake) Scan(src any) error {
+	switch v := src.(type) {
+	case nil:
+		*s = 0
+	case string:
+		return s.UnmarshalText([]byte(v))
+	case []byte:
+		return s.UnmarshalText(v)
+	case int64:
+		if v < 0 {
+			return fmt.Errorf("starlings: negative snowflake %d", v)
+		}
+		*s = Snowflake(v)
+	default:
+		return fmt.Errorf("starlings: cannot scan %T into a Snowflake", src)
+	}
+	return nil
+}
+
+// MarshalText returns the decimal form, so snowflakes work as map keys in
+// JSON and in text formats such as CSV.
+func (s Snowflake) MarshalText() ([]byte, error) { return []byte(s.String()), nil }
+
+// UnmarshalText parses the decimal form. Empty text is zero.
+func (s *Snowflake) UnmarshalText(b []byte) error {
+	if len(b) == 0 {
+		*s = 0
+		return nil
+	}
+	v, err := strconv.ParseUint(string(b), 10, 64)
+	if err != nil {
+		return fmt.Errorf("starlings: invalid snowflake %q", b)
+	}
+	*s = Snowflake(v)
+	return nil
 }

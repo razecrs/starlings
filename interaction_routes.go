@@ -2,6 +2,7 @@ package starlings
 
 import (
 	"context"
+	"strings"
 	"sync"
 )
 
@@ -15,16 +16,26 @@ type componentHandler struct {
 	fn SlashFunc
 }
 
-// OnComponent handles a button or select with exactly this custom ID. It
-// returns an unsubscribe function. Check the invoking user before handling
-// controls intended for one person; custom IDs are routing data, not authority.
+// OnComponent handles a button or select with this custom ID. It returns an
+// unsubscribe function. Check the invoking user before handling controls
+// intended for one person; custom IDs are routing data, not authority.
+//
+// A route can capture parts of the ID: "ticket:close:{id}" matches
+// "ticket:close:42", and i.Param("id") returns "42". Build such IDs with
+// CustomID so values cannot add segments.
 func (c *Client) OnComponent(customID string, fn SlashFunc) func() {
+	if strings.Contains(customID, "{") {
+		return c.onCustomIDPattern(InteractionMessageComponent, customID, fn)
+	}
 	return c.onCustomID(InteractionMessageComponent, customID, fn)
 }
 
 // OnModal handles submissions of the modal with exactly this custom ID.
 // Use i.TextValue to read a text input without walking component layouts.
 func (c *Client) OnModal(customID string, fn SlashFunc) func() {
+	if strings.Contains(customID, "{") {
+		return c.onCustomIDPattern(InteractionModalSubmit, customID, fn)
+	}
 	return c.onCustomID(InteractionModalSubmit, customID, fn)
 }
 

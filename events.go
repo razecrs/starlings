@@ -382,6 +382,9 @@ type InteractionCreate struct {
 	// followed up, so failure reporting knows whether "thinking..." remains.
 	finished int32 `json:"-"`
 
+	// params holds values captured by a custom-ID route with {parameters}.
+	params map[string]string `json:"-"`
+
 	// respondHTTP is set only for interactions received through an HTTP
 	// endpoint. Gateway interactions leave it nil and use the REST callback.
 	respondHTTP func(context.Context, InteractionResponse, []File) error

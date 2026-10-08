@@ -50,3 +50,27 @@ func TestSnowflakeUnmarshalNumber(t *testing.T) {
 		t.Errorf("got %d", s)
 	}
 }
+
+func TestSnowflakeDatabaseRoundTrip(t *testing.T) {
+	const id Snowflake = 1100000000000000123
+	v, err := id.Value()
+	if err != nil || v != "1100000000000000123" {
+		t.Fatalf("Value = %v, %v", v, err)
+	}
+	for _, src := range []any{"1100000000000000123", []byte("1100000000000000123"), int64(1100000000000000123)} {
+		var got Snowflake
+		if err := got.Scan(src); err != nil || got != id {
+			t.Fatalf("Scan(%T) = %d, %v", src, got, err)
+		}
+	}
+	var zero Snowflake = 5
+	if err := zero.Scan(nil); err != nil || zero != 0 {
+		t.Fatal("NULL did not scan as zero")
+	}
+	if v, _ := Snowflake(0).Value(); v != nil {
+		t.Fatal("zero should be stored as NULL")
+	}
+	if err := zero.Scan("not-a-number"); err == nil {
+		t.Fatal("invalid text was accepted")
+	}
+}

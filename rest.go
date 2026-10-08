@@ -193,6 +193,13 @@ func (c *Client) RequestRaw(ctx context.Context, req RESTRequest) ([]byte, error
 
 // do performs a REST call, decoding the response into out when out is non-nil.
 func (r *rest) do(ctx context.Context, req request, out any) error {
+	if _, ok := ctx.Deadline(); !ok && r.c.requestTimeout > 0 {
+		// A call made without a deadline, such as from a resource method,
+		// still cannot hang forever on a stalled bucket or connection.
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, r.c.requestTimeout)
+		defer cancel()
+	}
 	var body preparedBody
 
 	switch {
