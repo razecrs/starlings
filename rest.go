@@ -20,7 +20,7 @@ import (
 const BaseURL = "https://discord.com/api/v" + Version
 
 // userAgent identifies the library to Discord, which their docs require.
-const userAgent = "DiscordBot (https://github.com/razecrs/starlings, 0.1)"
+const userAgent = "DiscordBot (https://github.com/razecrs/starlings, 0.2)"
 
 // maxRetries caps how many times a single call is retried after a 429 or a
 // server error before giving up.

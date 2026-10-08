@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.1.2 (unreleased)
+## v0.2.0
 
 A bot can now be this short:
 
@@ -17,6 +17,14 @@ func ping() string {
 ```
 
 Optional features also cost nothing for bots that do not use them.
+
+v0.2.0 changes some APIs; the table under Changed lists each one with its
+replacement.
+
+### License
+
+The license text now matches the standard MIT License exactly, so tools such
+as pkg.go.dev recognise it. The terms are unchanged.
 
 ### Smaller by default
 
@@ -35,7 +43,7 @@ Optional features also cost nothing for bots that do not use them.
 
 ### Changed
 
-| v0.1.1 | v0.1.2 |
+| v0.1.1 | v0.2.0 |
 | --- | --- |
 | `starlings.New(token, opts...)` | `starlings.New(opts...)`, with `starlings.WithToken(token)` or `DISCORD_TOKEN` |
 | `starlings.NewCommandBot(token, opts...)` | `starlings.NewCommandBot(opts...)` |
