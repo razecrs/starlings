@@ -70,7 +70,7 @@ func (c CloseCode) String() string {
 	case CloseUnknownOpcode:
 		return "unknown opcode"
 	case CloseDecodeError:
-		return "decode error"
+		return "decode error: Discord could not read a payload this bot sent"
 	case CloseNotAuthenticated:
 		return "not authenticated"
 	case CloseAuthenticationFailed:
@@ -80,7 +80,7 @@ func (c CloseCode) String() string {
 	case CloseInvalidSeq:
 		return "invalid sequence"
 	case CloseRateLimited:
-		return "rate limited by the gateway"
+		return "rate limited: more than 120 gateway commands in 60 seconds"
 	case CloseSessionTimedOut:
 		return "session timed out"
 	case CloseInvalidShard:

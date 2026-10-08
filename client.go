@@ -48,6 +48,7 @@ type Client struct {
 	autoShards   bool
 	gatewayBase  string
 	initialState *presence
+	chunkMembers bool
 	extMu        sync.Mutex
 	ext          map[any]any
 	shardsMu     sync.RWMutex
@@ -222,6 +223,9 @@ func New(token string, opts ...Option) *Client {
 
 	c.token = normalizeToken(token)
 	c.installStateHandlers()
+	if c.chunkMembers {
+		c.installMemberChunking()
+	}
 	if c.syncGuild != nil {
 		guildID := *c.syncGuild
 		internalOn(c, func(ready *Ready) {

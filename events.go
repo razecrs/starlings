@@ -43,6 +43,10 @@ func (Connect) eventName() string { return "CONNECT" }
 type Disconnect struct {
 	eventBase `json:"-"`
 	ShardID   int `json:"shard_id"`
+	// CloseCode and CloseReason are set when Discord closed the connection.
+	// They are zero for network failures and for a client shutting down.
+	CloseCode   CloseCode `json:"close_code,omitzero"`
+	CloseReason string    `json:"close_reason,omitzero"`
 }
 
 func (Disconnect) eventName() string { return "DISCONNECT" }
@@ -236,14 +240,25 @@ type GuildMemberAdd struct {
 func (GuildMemberAdd) eventName() string { return "GUILD_MEMBER_ADD" }
 
 // GuildMemberUpdate fires when a member's roles, nickname or timeout change.
+//
+// Discord sends the member's complete current state, so a null field means
+// the value was removed: CommunicationDisabledUntil is nil once a timeout is
+// lifted, and Avatar is empty once a guild avatar is reset.
 type GuildMemberUpdate struct {
-	eventBase    `json:"-"`
-	GuildID      Snowflake   `json:"guild_id"`
-	User         *User       `json:"user"`
-	Nick         string      `json:"nick"`
-	Roles        []Snowflake `json:"roles"`
-	JoinedAt     *time.Time  `json:"joined_at"`
-	BeforeUpdate *Member     `json:"-"`
+	eventBase                  `json:"-"`
+	GuildID                    Snowflake   `json:"guild_id"`
+	User                       *User       `json:"user"`
+	Nick                       string      `json:"nick"`
+	Avatar                     string      `json:"avatar"`
+	Roles                      []Snowflake `json:"roles"`
+	JoinedAt                   *time.Time  `json:"joined_at"`
+	PremiumSince               *time.Time  `json:"premium_since"`
+	Deaf                       *bool       `json:"deaf"`
+	Mute                       *bool       `json:"mute"`
+	Pending                    bool        `json:"pending"`
+	Flags                      int         `json:"flags"`
+	CommunicationDisabledUntil *time.Time  `json:"communication_disabled_until"`
+	BeforeUpdate               *Member     `json:"-"`
 }
 
 func (GuildMemberUpdate) eventName() string { return "GUILD_MEMBER_UPDATE" }

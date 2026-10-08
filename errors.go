@@ -98,6 +98,10 @@ const (
 	ErrorUnknownToken                   = 10012
 	ErrorUnknownUser                    = 10013
 	ErrorUnknownEmoji                   = 10014
+	ErrorUnknownWebhook                 = 10015
+	ErrorUnknownBan                     = 10026
+	ErrorUnknownInteraction             = 10062
+	ErrorUnknownScheduledEvent          = 10070
 	ErrorMaximumGuilds                  = 30001
 	ErrorMaximumFriends                 = 30002
 	ErrorMaximumPins                    = 30003

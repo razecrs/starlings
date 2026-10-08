@@ -2,6 +2,7 @@ package starlings
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"time"
@@ -99,9 +100,15 @@ func (c *Client) SetNickname(ctx context.Context, guildID Snowflake, nick string
 	}, nil)
 }
 
-// Timeout mutes a member until the given time, up to 28 days ahead. Pass the
-// zero time to lift a timeout early.
+// MaxTimeout is the longest timeout Discord accepts.
+const MaxTimeout = 28 * 24 * time.Hour
+
+// Timeout mutes a member until the given time, up to MaxTimeout ahead. Pass
+// the zero time, or call ClearTimeout, to lift a timeout early.
 func (c *Client) Timeout(ctx context.Context, guildID, userID Snowflake, until time.Time, reason string) (*Member, error) {
+	if !until.IsZero() && time.Until(until) > MaxTimeout {
+		return nil, fmt.Errorf("starlings: a timeout can last at most %d days", int(MaxTimeout/(24*time.Hour)))
+	}
 	var t *time.Time
 	if !until.IsZero() {
 		t = &until
@@ -109,6 +116,11 @@ func (c *Client) Timeout(ctx context.Context, guildID, userID Snowflake, until t
 	return c.ModifyMember(ctx, guildID, userID, ModifyMember{
 		CommunicationDisabledUntil: &t,
 	}, reason)
+}
+
+// ClearTimeout lifts a member's timeout early.
+func (c *Client) ClearTimeout(ctx context.Context, guildID, userID Snowflake, reason string) (*Member, error) {
+	return c.Timeout(ctx, guildID, userID, time.Time{}, reason)
 }
 
 // AddMemberRole grants a role.

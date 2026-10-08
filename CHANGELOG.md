@@ -31,8 +31,41 @@ them.
 | `starlings.StarlogSystemMedia()` | `sysmedia.Option()` |
 | bundled pet art | `import _ "github.com/razecrs/starlings/starpets"` |
 
+### Fixed
+
+- A timed-out member now keeps only View Channel and Read Message History in
+  `BasePermissions` and `Permissions`, as Discord enforces. Channel
+  overwrites cannot restore the rest.
+- `GuildMemberUpdate` carries the member's full state, including the timeout,
+  guild avatar, boost date, pending flag, and member flags. The cache clears
+  a value when Discord sends null, so a lifted timeout is no longer kept.
+- The bot's own ID is recorded on READY even when users are not cached.
+
+### Gateway
+
+- Gateway commands are paced to Discord's limit of 120 per 60 seconds per
+  connection. Heartbeats, identify, and resume keep a reserve, so a burst of
+  member requests can no longer disconnect the shard.
+- `Disconnect` reports Discord's close code and reason. Close code 4002 now
+  says that Discord could not read something the bot sent, and a close that
+  repeats after every reconnect is logged once as an error.
+- `ShardStatus.Ready` and `Client.Online` follow the live session. They
+  become false while a shard is disconnected; `WaitReady` still only waits
+  for the first READY.
+- `WithMemberChunking` requests the full member list for guilds whose
+  GUILD_CREATE was incomplete.
+
 ### Added
 
+- `State.CanModerate` checks the role hierarchy for the member, the target,
+  and the bot, and returns a `*ModerationError` whose message can be shown
+  to the person who ran the command.
+- `Client.MessageHistory` iterates a channel's history with `range`.
+- `Client.DownloadAttachment` reads an attachment with a size limit and only
+  from Discord's CDN.
+- `InteractionCreate.Answered` and `Deferred` report the initial response.
+- `Client.ClearTimeout`, `MaxTimeout`, and named error codes for unknown
+  bans, webhooks, interactions, and scheduled events.
 - `Client.Extension` keeps one value per client for add-on packages and
   closes it with the client.
 - `OnOrdered` registers a handler that runs in gateway order before

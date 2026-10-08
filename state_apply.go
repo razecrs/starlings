@@ -19,9 +19,13 @@ func (s *State) Apply(event Event) (err error) {
 	switch e := event.(type) {
 	case *Ready:
 		s.resetShardLocked(e.Shard[0], e.Shard[1])
-		if s.config.Users && e.User != nil {
+		if e.User != nil {
+			// The bot's ID drives reaction "me" flags and CanModerate even
+			// when users are not cached.
 			s.selfID = e.User.ID
-			s.users[e.User.ID] = cloneUser(*e.User)
+			if s.config.Users {
+				s.users[e.User.ID] = cloneUser(*e.User)
+			}
 		}
 		if s.config.Guilds {
 			for _, guild := range e.Guilds {
@@ -107,12 +111,27 @@ func (s *State) Apply(event Event) (err error) {
 			snapshot := cloneMember(old)
 			e.BeforeUpdate = &snapshot
 		}
-		member := Member{User: e.User, Nick: e.Nick, Roles: e.Roles}
+		// The update is a full snapshot: nulls clear values rather than
+		// meaning "unchanged", so it replaces the cached member.
+		member := Member{
+			User: e.User, Nick: e.Nick, Avatar: e.Avatar, Roles: e.Roles,
+			PremiumSince: e.PremiumSince, Pending: e.Pending, Flags: e.Flags,
+			CommunicationDisabledUntil: e.CommunicationDisabledUntil,
+		}
 		if e.JoinedAt != nil {
 			member.JoinedAt = *e.JoinedAt
 		}
 		if old, ok := s.members[e.GuildID][e.User.ID]; ok {
-			member = mergeMember(old, member)
+			if e.JoinedAt == nil {
+				member.JoinedAt = old.JoinedAt
+			}
+			member.Deaf, member.Mute = old.Deaf, old.Mute
+		}
+		if e.Deaf != nil {
+			member.Deaf = *e.Deaf
+		}
+		if e.Mute != nil {
+			member.Mute = *e.Mute
 		}
 		s.putMemberLocked(e.GuildID, member)
 	case *GuildMemberRemove:

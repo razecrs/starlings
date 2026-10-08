@@ -127,6 +127,11 @@ func (c *Client) intentWarnings() []string {
 			" will never fire: enable "+orList(needed))
 	}
 
+	if c.chunkMembers && !c.intents.Has(IntentGuildMembers) {
+		warnings = append(warnings, "WithMemberChunking needs IntentGuildMembers, which is privileged: "+
+			"enable it in the developer portal and in WithIntents")
+	}
+
 	// MessageContent is not an event gate - it blanks fields instead, which is
 	// even more confusing, so it gets its own check.
 	messageSlot, wantsMessages := slots["MESSAGE_CREATE"]

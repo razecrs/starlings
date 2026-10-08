@@ -125,6 +125,9 @@ type ShardStatus struct {
 	ID        int
 	Count     int
 	Connected bool
+	// Ready reports that this connection has received READY or RESUMED and
+	// is delivering events. It becomes false again when the connection drops.
+	Ready     bool
 	Latency   time.Duration
 	Sequence  int64
 	Resumable bool
@@ -150,12 +153,25 @@ func (c *Client) ShardStatuses() []ShardStatus {
 			ID:        shard.shard[0],
 			Count:     count,
 			Connected: shard.gw.connected.Load(),
+			Ready:     shard.gw.live.Load(),
 			Latency:   time.Duration(shard.gw.latency.Load()),
 			Sequence:  shard.seq.Load(),
 			Resumable: shard.sessionID.Load() != nil,
 		}
 	}
 	return out
+}
+
+// Online reports whether every shard currently has a ready session. Unlike
+// WaitReady, which only waits for the first READY, it becomes false while any
+// shard is disconnected or still identifying.
+func (c *Client) Online() bool {
+	for _, status := range c.ShardStatuses() {
+		if !status.Ready {
+			return false
+		}
+	}
+	return true
 }
 
 // ShardIDForGuild reports which shard owns a guild using Discord's official

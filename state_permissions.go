@@ -87,6 +87,10 @@ func (s *State) permissionsLocked(guildID, channelID, userID Snowflake) (Permiss
 			break
 		}
 	}
+	// Overwrites cannot give a timed-out member back what the timeout removed.
+	if member.TimedOut() {
+		permissions &= timedOutPermissions
+	}
 	return permissions, nil
 }
 
@@ -139,8 +143,15 @@ func (s *State) basePermissionsLocked(guildID, userID Snowflake) (Permissions, e
 	if permissions&PermissionAdministrator != 0 {
 		return ^Permissions(0), nil
 	}
+	if member.TimedOut() {
+		permissions &= timedOutPermissions
+	}
 	return permissions, nil
 }
+
+// timedOutPermissions is all Discord leaves a timed-out member who is neither
+// the owner nor an administrator.
+const timedOutPermissions = PermissionViewChannel | PermissionReadMessageHistory
 
 // UserColor returns the member's display colour from their highest coloured
 // role. Zero means Discord's default text colour.

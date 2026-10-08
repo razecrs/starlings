@@ -36,6 +36,22 @@ func (e *FatalError) Error() string {
 	return s
 }
 
+// GatewayCloseError reports that Discord closed a gateway connection. The
+// client reconnects on its own, and the Disconnect event carries the code and
+// reason. A fatal code is returned from RunContext as a *FatalError instead.
+type GatewayCloseError struct {
+	Code   CloseCode
+	Reason string
+}
+
+func (e *GatewayCloseError) Error() string {
+	s := "starlings: gateway closed: " + e.Code.String()
+	if e.Reason != "" {
+		s += " (" + sanitizeUntrustedText(e.Reason) + ")"
+	}
+	return s
+}
+
 // gateway owns one websocket connection and the state needed to resume it.
 type gateway struct {
 	conn     *websocket.Conn
@@ -47,6 +63,8 @@ type gateway struct {
 	// connection is a zombie.
 	ackPending atomic.Bool
 	connected  atomic.Bool
+	live       atomic.Bool // READY or RESUMED received on this connection
+	sends      sendWindow
 	beatSent   atomic.Int64
 	latency    atomic.Int64
 
@@ -63,7 +81,8 @@ type gateway struct {
 // run keeps a gateway connection alive until ctx is cancelled or a fatal error
 // makes reconnecting pointless.
 func (g *gateway) run(ctx context.Context, c *Client) error {
-	var attempt int
+	var attempt, repeats int
+	var lastClose CloseCode
 	for {
 		err := g.connect(ctx, c)
 
@@ -74,6 +93,23 @@ func (g *gateway) run(ctx context.Context, c *Client) error {
 		var fatal *FatalError
 		if errors.As(err, &fatal) {
 			return err
+		}
+
+		// A close caused by something the bot sends repeats after every
+		// reconnect. Say so plainly instead of logging the same warning forever.
+		var closed *GatewayCloseError
+		if errors.As(err, &closed) && closed.Code == lastClose {
+			repeats++
+		} else {
+			repeats = 0
+			lastClose = 0
+			if closed != nil {
+				lastClose = closed.Code
+			}
+		}
+		if repeats == 2 && (lastClose == CloseDecodeError || lastClose == CloseUnknownOpcode || lastClose == CloseRateLimited) {
+			c.gatewayLogger().Error("starlings: Discord keeps closing the connection because of something this bot sends; "+
+				"check gateway commands made from Ready or GuildCreate handlers", "code", int(lastClose), "reason", lastClose.String())
 		}
 
 		attempt++
@@ -102,7 +138,7 @@ func backoff(attempt int) time.Duration {
 
 // connect runs one connection from dial to disconnect. It returns the error
 // that ended it; the caller decides whether to try again.
-func (g *gateway) connect(ctx context.Context, c *Client) error {
+func (g *gateway) connect(ctx context.Context, c *Client) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -133,6 +169,7 @@ func (g *gateway) connect(ctx context.Context, c *Client) error {
 		return fmt.Errorf("dialing gateway: %w", err)
 	}
 	conn.SetReadLimit(readLimit)
+	g.sends.reset(time.Now())
 	g.writeMu.Lock()
 	g.conn = conn
 	g.writeMu.Unlock()
@@ -177,7 +214,17 @@ func (g *gateway) connect(ctx context.Context, c *Client) error {
 	g.connected.Store(true)
 	defer func() {
 		g.connected.Store(false)
-		c.emitSynthetic(&Disconnect{ShardID: c.shard[0]})
+		g.live.Store(false)
+		event := &Disconnect{ShardID: c.shard[0]}
+		var closed *GatewayCloseError
+		var fatal *FatalError
+		switch {
+		case errors.As(err, &closed):
+			event.CloseCode, event.CloseReason = closed.Code, closed.Reason
+		case errors.As(err, &fatal):
+			event.CloseCode, event.CloseReason = fatal.Code, fatal.Reason
+		}
+		c.emitSynthetic(event)
 	}()
 
 	g.ackPending.Store(false)
@@ -263,13 +310,13 @@ func (g *gateway) sendHeartbeat(ctx context.Context, c *Client) error {
 	g.beatSent.Store(time.Now().UnixNano())
 	seq := c.seq.Load()
 	if seq == 0 {
-		return g.sendRaw(ctx, []byte(`{"op":1,"d":null}`))
+		return g.sendPriority(ctx, []byte(`{"op":1,"d":null}`))
 	}
 	buf := make([]byte, 0, 32)
 	buf = append(buf, `{"op":1,"d":`...)
 	buf = appendInt(buf, seq)
 	buf = append(buf, '}')
-	return g.sendRaw(ctx, buf)
+	return g.sendPriority(ctx, buf)
 }
 
 // readLoop pumps frames until the connection fails.
@@ -280,15 +327,16 @@ func (g *gateway) readLoop(ctx context.Context, c *Client) error {
 			if ctx.Err() != nil {
 				return nil
 			}
-			if code := websocket.CloseStatus(err); code != -1 {
-				cc := CloseCode(code)
+			var closeErr websocket.CloseError
+			if errors.As(err, &closeErr) {
+				cc := CloseCode(closeErr.Code)
 				if cc.Fatal() {
-					return &FatalError{Code: cc}
+					return &FatalError{Code: cc, Reason: closeErr.Reason}
 				}
 				if !cc.Resumable() {
 					c.clearSession()
 				}
-				return fmt.Errorf("gateway closed: %s", cc)
+				return &GatewayCloseError{Code: cc, Reason: closeErr.Reason}
 			}
 			return err
 		}
@@ -507,8 +555,12 @@ func internalEvent(name string) bool {
 // dispatch routes a decoded event to its handlers, after applying any session
 // state it carries.
 func (c *Client) dispatch(name string, payload jsontext.Value) {
-	if name == "READY" {
+	switch name {
+	case "READY":
 		c.applyReady(payload)
+		c.gw.live.Store(true)
+	case "RESUMED":
+		c.gw.live.Store(true)
 	}
 	if handlers := c.rootClient().rawHandlers.Load(); len(*handlers) > 0 {
 		data := append(jsontext.Value(nil), payload...)
@@ -616,12 +668,33 @@ func (g *gateway) send(ctx context.Context, op Opcode, d any) error {
 	if err != nil {
 		return err
 	}
+	if op == OpIdentify || op == OpResume {
+		return g.sendPriority(ctx, buf)
+	}
 	return g.sendRaw(ctx, buf)
 }
 
-// sendRaw writes one already-encoded frame. The gateway allows no concurrent
-// writes, so every send funnels through one mutex.
+// sendRaw writes one already-encoded frame, waiting if the connection has
+// used its share of Discord's 120-commands-per-minute limit.
 func (g *gateway) sendRaw(ctx context.Context, data []byte) error {
+	if err := g.sends.take(ctx, false); err != nil {
+		return err
+	}
+	return g.write(ctx, data)
+}
+
+// sendPriority is sendRaw for heartbeats, identify, and resume, which may use
+// the slots other commands leave in reserve.
+func (g *gateway) sendPriority(ctx context.Context, data []byte) error {
+	if err := g.sends.take(ctx, true); err != nil {
+		return err
+	}
+	return g.write(ctx, data)
+}
+
+// write sends one frame. The gateway allows no concurrent writes, so every
+// send funnels through one mutex.
+func (g *gateway) write(ctx context.Context, data []byte) error {
 	g.writeMu.Lock()
 	defer g.writeMu.Unlock()
 	if g.conn == nil {

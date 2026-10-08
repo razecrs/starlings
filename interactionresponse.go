@@ -56,12 +56,28 @@ type InteractionResponseData struct {
 var ErrInteractionAlreadyAnswered = errors.New(
 	"starlings: this interaction has already been answered - use Followup instead")
 
+// claimAnswer records the initial callback type. Only the first caller wins.
+func (i *InteractionCreate) claimAnswer(t CallbackType) bool {
+	return atomic.CompareAndSwapInt32(&i.answered, 0, int32(max(t, 1)))
+}
+
+// Answered reports whether the initial response has been sent or is being
+// sent. After that, use EditResponse or Followup.
+func (i *InteractionCreate) Answered() bool { return atomic.LoadInt32(&i.answered) != 0 }
+
+// Deferred reports whether the initial response was Defer or DeferUpdate, so
+// the visible result still has to be sent with EditResponse or Followup.
+func (i *InteractionCreate) Deferred() bool {
+	t := CallbackType(atomic.LoadInt32(&i.answered))
+	return t == CallbackDeferredChannelMessage || t == CallbackDeferredUpdateMessage
+}
+
 // Respond sends the initial answer to an interaction.
 //
 // Discord gives you **three seconds**. If the work takes longer, call Defer
 // first, which shows "thinking..." and buys fifteen minutes for Followup.
 func (i *InteractionCreate) Respond(ctx context.Context, resp InteractionResponse) error {
-	if !atomic.CompareAndSwapInt32(&i.answered, 0, 1) {
+	if !i.claimAnswer(resp.Type) {
 		return ErrInteractionAlreadyAnswered
 	}
 	if i.respondHTTP != nil {
@@ -77,7 +93,7 @@ func (i *InteractionCreate) Respond(ctx context.Context, resp InteractionRespons
 
 // RespondFiles sends the initial interaction response with file attachments.
 func (i *InteractionCreate) RespondFiles(ctx context.Context, resp InteractionResponse, files ...File) error {
-	if !atomic.CompareAndSwapInt32(&i.answered, 0, 1) {
+	if !i.claimAnswer(resp.Type) {
 		return ErrInteractionAlreadyAnswered
 	}
 	if i.respondHTTP != nil {
