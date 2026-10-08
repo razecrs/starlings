@@ -12,6 +12,43 @@ err = bot.DeleteMessage(ctx, channelID, message.ID, "cleanup")
 
 Event convenience methods (`Reply`, `Send`, `React`, and `Delete`) use the event's client and IDs. Client methods accept a context and are the better fit when the operation belongs to a larger request lifecycle.
 
+## Values that act on themselves
+
+Messages, members, users, channels, roles, and guilds that come from events,
+`State`, or REST calls know which client they came from:
+
+```go
+msg.Reply("done")
+member.Timeout(10*time.Minute, "spam")
+user.Send("a direct message")
+channel.SendEmbed(starlings.NewEmbed("Build 42"))
+```
+
+| Type | Methods |
+| --- | --- |
+| `Message` | `Reply`, `ReplyComplex`, `ReplyEmbed`, `Edit`, `Delete`, `React`, `Unreact`, `Pin`, `Unpin`, `Link` |
+| `Member` | `Ban`, `Kick`, `Timeout`, `ClearTimeout`, `AddRole`, `RemoveRole`, `SetNick`, `Send`, `SendEmbed`, `CanModerate`, `GuildID` |
+| `User` | `Send`, `SendComplex`, `SendEmbed` |
+| `Channel` | `Send`, `SendComplex`, `SendEmbed`, `Typing`, `Purge`, `Delete` |
+| `Role` | `Delete` |
+| `Guild` | `Member`, `Ban`, `Unban` |
+
+Each method calls the matching `Client` method, which stays available. A user's
+DM channel is created once and reused. The methods use a background context
+bounded by `WithRequestTimeout`; `WithContext` returns a copy that uses yours:
+
+```go
+err := member.WithContext(ctx).Kick("raid")
+```
+
+A value built by hand, such as a struct literal, has no client and returns
+`ErrUnbound`. `Sendable` and `Mentionable` describe what can receive a message
+or be mentioned.
+
+`FetchMember`, `FetchChannel`, and `FetchGuild` read the cache and fall back to
+a REST request on a miss. `State` lookups never make requests, so a network
+call is always visible in the name.
+
 ## Rich messages and mentions
 
 ```go
@@ -53,7 +90,39 @@ _, err = bot.SendFiles(ctx, channelID,
 
 ## History and pagination
 
-`Messages` accepts `MessagesQuery` for before/after/around pagination. Discord page limits still apply. Use a context deadline and advance with the oldest/newest returned ID; do not retry the same page indefinitely when a channel changes during traversal.
+`MessageHistory` walks a channel from newest to oldest, 100 messages per
+request, and stops requesting as soon as the loop ends:
+
+```go
+for msg, err := range bot.MessageHistory(ctx, channelID, 0) {
+	if err != nil {
+		return err
+	}
+	if msg.Timestamp.Before(cutoff) {
+		break
+	}
+	archive(msg)
+}
+```
+
+`Messages` accepts `MessagesQuery` for a single before/after/around page. Discord page limits still apply.
+
+`Purge` deletes recent messages, optionally only those matching a function.
+Messages under 14 days old are bulk-deleted; older ones, which Discord refuses
+in bulk, are deleted one at a time up to `MaxOld`:
+
+```go
+res, err := channel.Purge(starlings.PurgeOptions{
+	Count:  50,
+	Match:  func(m *starlings.Message) bool { return m.Author.ID == spammerID },
+	Reason: "spam cleanup",
+})
+log.Printf("deleted %d of %d matching", res.Deleted, res.Matched)
+```
+
+`DownloadAttachment` reads an attachment with a size limit. It only fetches from
+Discord's CDN, including after redirects, so a URL taken from user input cannot
+make the bot request internal addresses.
 
 ## Errors and retries
 
@@ -75,6 +144,40 @@ if _, err := bot.Send(ctx, channelID, "hello"); err != nil {
 ```
 
 `APIError` preserves the HTTP status, Discord error code, field validation failures, and a bounded raw body. Error strings sanitise untrusted control characters. Do not blindly retry permission, validation, or not-found errors.
+
+Named codes such as `ErrorMissingPermissions`, `ErrorUnknownMember`, and
+`ErrorBulkDeleteTooOld` work with `IsDiscordCode(err, codes...)`. For common
+codes, `APIError.UserMessage` explains the refusal in words a user can act on;
+error-returning interaction handlers show it automatically.
+
+### How rate limits are handled
+
+- A route whose limits are not known yet sends one request first, then as many
+  as Discord reports, instead of a burst that earns 429s.
+- Routes Discord reports as one bucket share one count. Interaction callbacks
+  and webhooks are limited per interaction and per webhook, as Discord counts
+  them.
+- Bot requests are paced to the global limit of 50 per second before Discord
+  answers 429. `WithGlobalRateLimit` changes the rate if Discord granted a
+  higher one. Interaction callbacks are exempt, as they are at Discord, and also
+  skip `WithPacing`.
+- After a 401, further requests return `ErrTokenRejected` without being sent.
+  `InvalidRequests` reports the 401, 403, and 429 count that Cloudflare limits
+  to 10,000 per ten minutes per IP.
+
+Waiting is the default. For work that is pointless later, such as renaming a
+channel inside an interaction, `FailFast` returns a `*RateLimitError` instead:
+
+```go
+_, err := bot.ModifyChannel(starlings.FailFast(ctx), channelID, params, "rename")
+var limited *starlings.RateLimitError
+if errors.As(err, &limited) {
+	// retry after limited.RetryAfter, or tell the user
+}
+```
+
+The `RateLimit` event reports 429 responses; `RateLimitWait` reports time spent
+waiting on a bucket Starlings already knew was empty.
 
 ## Audit-log reasons
 

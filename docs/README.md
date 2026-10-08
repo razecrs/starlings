@@ -5,14 +5,14 @@ Start with [getting started](getting-started.md), then use the guide for the par
 ## Build a bot
 
 - [Getting started](getting-started.md): token, intents, commands, events, shutdown, and the first production checks.
-- [Interactions](interactions.md): slash commands, options, syncing, responses, components, modals, autocomplete, and HTTP delivery.
-- [Messages and REST](rest-and-messages.md): sending, editing, uploads, mentions, errors, rate limits, audit reasons, and raw routes.
+- [Interactions](interactions.md): slash commands, typed arguments, handler results, errors, syncing, embeds, buttons, modals, pagers, autocomplete, and HTTP delivery.
+- [Messages and REST](rest-and-messages.md): sending, values that act on themselves, history, purging, uploads, downloads, mentions, errors, rate limits, audit reasons, and raw routes.
 - [Voice](voice.md): joining, FFmpeg playback, custom Opus, receiving packets, soundboard, and failure handling.
-- [Runtime and gateway](runtime.md): reconnects, sharding, dispatch ordering, state consumers, raw events, and manual control.
+- [Runtime and gateway](runtime.md): reconnects, readiness, what happens automatically and how to turn it off, member lists, sharding, dispatch ordering, raw events, and extension hooks.
 
 ## Optional systems
 
-- [State and Starlings Guard](state.md): cache contents, snapshots, permissions, manual mode, and implementation comparisons.
+- [State and Starlings Guard](state.md): cache contents, snapshots, permissions, timeouts, moderation checks, manual mode, and implementation comparisons.
 - [Starlog](starlog.md): dashboard, streaming mode, pets, media, sinks, subprocess output, and deployment behaviour.
 - [StarDB](stardb.md): JSON, CSV, SQL, Firebase, Supabase, encryption, limits, and logging.
 - [Social SDK](social-sdk.md): bot/user authorization boundaries, lobbies, provisional accounts, and profile widgets.

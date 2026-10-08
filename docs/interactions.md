@@ -2,10 +2,13 @@
 
 ## Register and publish commands
 
-`Slash` records a definition and handler locally. In the current checkout,
-`Run` automatically publishes them after READY. Set `DISCORD_GUILD_ID` for a
-development guild; without it, the target is global. Publishing replaces the
-command set in that scope. `WithAutoSync(false)` leaves publishing to you.
+`Slash` records a definition and handler locally. `Run` publishes them after
+READY, but only when they differ from what Discord already has. Set
+`DISCORD_GUILD_ID` for a development guild; without it, the target is global.
+Publishing replaces the command set in that scope. If your own code calls
+`SyncCommands` shortly after READY, automatic publishing stands down, so a bot
+that manages its own commands is never published somewhere else.
+`WithAutoSync(false)` turns automatic publishing off.
 
 Start with the short form:
 
@@ -27,8 +30,19 @@ such as `*User`, `*Member`, `*Channel`, and `*Attachment` use Discord's resolved
 data without a lookup request. The [slashbot example](../examples/slashbot/main.go)
 is a complete program.
 
+Field types include `string`, `bool`, every integer and float kind, `Snowflake`,
+and `time.Duration`, which users type as `10m`, `2h`, or `3d`. Tags set the
+details: `desc`, `name`, `optional`, `min` and `max` (a number range, or text
+length), `choices:"Label=value|Label=value"`, `channel:"text,thread"`, and
+`autocomplete`. Required options are placed first automatically, and a
+definition Discord would reject stops the program at startup.
+`ParseDuration` uses the same duration rules.
+
 Return `UserErrorf` for a message safe to show privately to the user. Other
 errors are logged and replaced with a generic failure, not sent verbatim.
+Common Discord refusals are explained instead: a missing permission, an
+unknown member, a message too old to bulk-delete, and others carry a
+`UserMessage` the user can act on.
 `.Require(perms)` enforces member permissions at runtime as well as setting
 Discord's defaults. `.BotNeeds(perms)` checks bot permissions. Neither replaces
 the ownership, target hierarchy, or application-specific checks your action needs.
@@ -79,6 +93,20 @@ role := i.RoleOption("role")
 
 Resolved user, channel, and role helpers use the objects Discord includes in the interaction and do not make a REST request.
 
+Autocomplete has its own handler, so command side effects never run while
+someone is typing. `Focused` returns the option being typed:
+
+```go
+type RemoveArgs struct {
+	Warning string `desc:"Warning" autocomplete:""`
+}
+bot.Slash("warning-remove", "Delete a warning", removeWarning).
+	Autocomplete(func(i *starlings.InteractionCreate) {
+		typed := i.Focused().String()
+		i.Autocomplete(matchingWarnings(i.GuildID, typed)...)
+	})
+```
+
 ## Respond once, then follow up
 
 An interaction gets one initial acknowledgement. Use one of:
@@ -113,6 +141,21 @@ it; `.NoAutoDefer()` disables it for one slash command. Open modals promptly:
 Discord does not allow opening one after acknowledging. HTTP handlers must
 acknowledge before returning; the gateway timer does not apply there.
 
+Embeds have a builder that shortens text to Discord's limits, so a long
+user-supplied value cannot make the whole response fail. Return the embed, or
+send it explicitly:
+
+```go
+e := starlings.NewEmbed("Warning issued").
+	SetDescription(reason).
+	SetColor(starlings.ColorYellow).
+	AddField("Moderator", i.Invoker().Mention(), true)
+return e // from a handler, or:
+i.ReplyEmbedEphemeral(e)
+```
+
+`Answered` and `Deferred` report what the initial response was.
+
 For bounded background work, `SlashTask` acknowledges immediately and runs with
 a deadline and shutdown cancellation. Ordinary synchronous handlers still block
 the dispatcher, and `WithAsyncEvents(true)` does not impose a concurrency limit.
@@ -134,10 +177,32 @@ id := starlings.CustomID("ticket", "close", ticketID)
 ```
 
 Route parameters are untrusted input. Typed decoding rejects malformed numbers,
-but does not authorize an action. Stable IDs and registered routes work after
-a restart; an in-memory `Watch` does not. `Pager` supplies a restart-friendly,
-owner-checked view for paginated results. Modal argument structs currently bind
-text inputs; use the interaction's explicit accessors for dropdown selections.
+but does not authorize an action. `CustomID` escapes values, so a value
+containing `:` cannot add segments. Inside a handler, `Param`, `ParamID`, and
+`ParamInt` read the captured values directly. Stable IDs and registered routes
+work after a restart; an in-memory `Watch` does not.
+
+Modal argument structs are filled from text inputs and from the first choice
+of each select, matched by custom ID. Fields are named after the custom ID in
+snake_case, or by a `name` tag.
+
+`Pager` is a paged view with previous and next buttons. It keeps no state: the
+page, the owner, and an argument travel in the custom IDs, so pages work after
+a restart, and only the person who opened the view can turn them.
+
+```go
+warnings := bot.Pager("warnings", func(i *starlings.InteractionCreate, page int, userID string) (starlings.Page, error) {
+	rows, total := loadWarnings(userID, page*5, 5)
+	return starlings.Page{Embed: renderWarnings(rows), Pages: (total + 4) / 5}, nil
+})
+
+bot.Slash("warnings", "Show a member's warnings", func(i *starlings.InteractionCreate, a struct{ User *starlings.User }) error {
+	return warnings.Show(i, a.User.ID.String(), true)
+})
+```
+
+`Page.Extra` adds components under the arrows, and `Pager.Turn` redraws a page
+in place, for example after a button on the page deleted an entry.
 
 For direct event ownership, the original interface still works:
 

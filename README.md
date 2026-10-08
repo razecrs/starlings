@@ -5,16 +5,18 @@
 Starlings is a Discord library for Go. It keeps the common bot code short without hiding the gateway, state, voice, or REST API when you need control.
 
 ```go
-bot := starlings.NewCommandBot()
+func main() {
+	bot := starlings.New()
+	bot.Slash("ping", "Is the bot alive?", ping)
+	log.Fatal(bot.Run())
+}
 
-bot.Command("ping", func(m *starlings.MessageCreate, _ []string) {
-	m.Reply("pong")
-})
-
-log.Fatal(bot.Run())
+func ping() string {
+	return "Pong!"
+}
 ```
 
-`Run` handles reconnects, session resumes, gateway compression, and Discord's recommended shard count. A small bot can stay small; a large one does not need a different client.
+`New` reads the token from `DISCORD_TOKEN`. `Run` chooses intents from your handlers, publishes commands when they change, and handles reconnects, session resumes, gateway compression, and Discord's recommended shard count. A small bot can stay small; a large one does not need a different client, and every automatic step has a switch.
 
 ## Start here
 
@@ -24,19 +26,42 @@ Starlings requires Go 1.27 or newer.
 go get github.com/razecrs/starlings@latest
 ```
 
-Set `DISCORD_TOKEN`, enable the Message Content intent in the Discord developer portal, then run the first example:
+Set `DISCORD_TOKEN` (or put it in a `.env` file), set `DISCORD_GUILD_ID` to a server you are testing in so commands appear there at once, then run the first example:
 
 ```sh
-go run ./examples/firstbot
+go run ./examples/ping
 ```
 
 The token belongs in the environment, never in source. Copy [`.env.example`](.env.example) for the larger examples that load several settings.
 
 ## The short path
 
-Commands do not need event plumbing:
+A handler asks only for what it uses and returns what to send. Options come from a struct:
 
 ```go
+type BanArgs struct {
+	User   *starlings.Member `desc:"Who to ban"`
+	Reason string            `desc:"Why" max:"400"`
+}
+
+func ban(i *starlings.InteractionCreate, a BanArgs) (string, error) {
+	if err := i.Member.CanModerate(a.User); err != nil {
+		return "", err
+	}
+	return "Banned " + a.User.Mention(), a.User.Ban(a.Reason, 0)
+}
+
+bot.Slash("ban", "Ban a member", ban).Require(starlings.PermissionBanMembers)
+```
+
+`Require` sets Discord's default permissions and checks them again on every use. Errors from `UserErrorf`, refused moderation, and common Discord refusals are shown privately to the user; anything else is logged, and the user sees a generic message. Slow handlers are deferred automatically, so a late reply still arrives.
+
+Messages, members, channels, and users act on themselves (`msg.Reply`, `member.Timeout`, `channel.Send`, `user.Send`). Buttons and modals use the same handler shapes with routes such as `ticket:close:{id}`, and `Pager` builds a paged view that keeps working after a restart. See [the interactions guide](docs/interactions.md) and [messages and REST](docs/rest-and-messages.md).
+
+Prefix commands remain available:
+
+```go
+bot := starlings.NewCommandBot()
 bot.Command("say", func(m *starlings.MessageCreate, args []string) {
 	m.ReplyComplex(starlings.SendData{
 		Content:         strings.Join(args, " "),
@@ -46,9 +71,8 @@ bot.Command("say", func(m *starlings.MessageCreate, args []string) {
 ```
 
 `NewCommandBot` selects the three intents prefix commands need and skips the
-resource cache they usually do not. It is only a preset: options can replace
-both choices, or use `New` for complete state. Message Content must still be
-enabled in Discord's developer portal.
+resource cache they usually do not. Message Content must still be enabled in
+Discord's developer portal.
 
 Typed handlers infer the event from the argument:
 
@@ -59,26 +83,9 @@ bot.On(func(m *starlings.MessageCreate) { /* ... */ })
 
 For compile-time handler checks, use `starlings.On(bot, handler)`. `Listen` returns an unsubscribe function and `Once` removes itself after the first event.
 
-Interactions use the same client:
+Interactions can arrive through the gateway or a verified HTTP endpoint. `InteractionHandler` is a normal `net/http` handler; `VerifyInteraction` is available when the application owns request routing.
 
-```go
-bot.Slash("hello", "Say hello", func(i *starlings.InteractionCreate) {
-	if err := i.Reply("hello"); err != nil {
-		log.Print(err)
-	}
-})
-
-bot.On(func(*starlings.Ready) {
-	if err := bot.SyncCommands(context.Background(), 0); err != nil {
-		log.Print(err)
-	}
-})
-```
-
-They can arrive through the gateway or a verified HTTP endpoint. `InteractionHandler` is a normal `net/http` handler; `VerifyInteraction` is available when the application owns request routing.
-
-For a small bot, `WithCommandSync(guildID)` publishes registered commands once
-after READY. Leave it out when deployment code should control command changes.
+For full control, `starlings.New(starlings.Explicit(), starlings.WithToken(token))` turns off everything automatic: inferred intents, command publishing, automatic deferral, panic recovery, and memory trimming. The [runtime guide](docs/runtime.md) lists each behaviour and its own switch.
 
 ## What is covered
 
@@ -151,7 +158,7 @@ bot := starlings.New(starlings.WithToken(token), starlings.WithStarlog(logs))
 
 In a terminal it renders a live dashboard with bot and shard status, CPU, heap, goroutines, log rate, scrollback, media activity, and animated Star Pets. Outside a terminal it falls back to a clean stream, so CI and files never receive dashboard control codes.
 
-The pieces are independent. Keep styled streaming logs without the dashboard, select one pet or a crew, send subprocess output through `BuildWriter` and `Writer`, or attach filtered sinks to files and pipes. System media detection supports Windows media sessions and Linux MPRIS, including a Spotify card. The renderer and terminal input are written in Go.
+The pieces are independent. Keep styled streaming logs without the dashboard, select one pet or a crew, send subprocess output through `BuildWriter` and `Writer`, or attach filtered sinks to files and pipes. System media detection (`sysmedia.Option()`) supports Windows media sessions and Linux MPRIS, including a Spotify card; the pixel-art pets come from `import _ "github.com/razecrs/starlings/starpets"`. Both are separate packages, so bots that do not use them do not link them. The renderer and terminal input are written in Go.
 
 Run the network-free demo to see it without a Discord token:
 
@@ -209,13 +216,13 @@ The lookup result includes Starlings' deep snapshot; faster libraries may return
 
 ## Failure behaviour
 
-Startup warnings catch intent combinations that would silently starve a handler or blank message content. REST errors preserve Discord's status and error code through `APIError`. `Run` returns `FatalError` when reconnecting cannot help, such as a rejected token or disallowed intents.
+Startup warnings catch intent combinations that would silently starve a handler or blank message content. REST errors preserve Discord's status and error code through `APIError`, and common codes carry a plain explanation. `Run` returns `FatalError` when reconnecting cannot help, such as a rejected token or disallowed intents. After Discord rejects the token, REST calls stop instead of adding to Cloudflare's invalid-request count.
 
-Handlers are synchronous and ordered by default. A slow handler therefore delays later events; use a goroutine or `WithAsyncEvents(true)` for independent work. Heartbeats remain on their own goroutine.
+Handlers are synchronous and ordered by default. A slow handler therefore delays later events; use a goroutine or `WithAsyncEvents(true)` for independent work. Heartbeats remain on their own goroutine. A panic in a handler is logged with its stack and the bot keeps running, unless `WithPanicRecovery(false)` is set.
 
 ## Documentation
 
-- [v0.1.1 changes](CHANGELOG.md)
+- [Changes](CHANGELOG.md)
 - [Documentation index](docs/README.md)
 - [Getting started](docs/getting-started.md)
 - [Interactions](docs/interactions.md)

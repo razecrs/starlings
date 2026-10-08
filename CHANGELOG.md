@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.2.1
+
+Documentation for the v0.2 APIs. No code changes.
+
+- The README opens with the slash-command form and the short handler path.
+- The interactions guide covers argument tags, durations, autocomplete with
+  `Focused`, embeds, route parameters, modal selects, and `Pager`.
+- The messages guide covers values that act on themselves, `Fetch*`,
+  `MessageHistory`, `Purge`, `DownloadAttachment`, error explanations, and
+  how rate limits are handled, including `FailFast`.
+- The runtime guide lists every automatic behaviour with its switch,
+  `Explicit`, readiness, member chunking, memory trimming, panic recovery,
+  and the `OnOrdered` and `Extension` hooks.
+- The state guide covers timeout-aware permissions and `CanModerate`.
+
 ## v0.2.0
 
 A bot can now be this short:

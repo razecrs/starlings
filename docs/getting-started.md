@@ -13,9 +13,10 @@ go get github.com/razecrs/starlings@latest
 
 ## Run a slash-command bot
 
-These examples describe this checkout. The published v0.1.1 constructor used
-`New(token, options...)`; the new form is `New(WithToken(token), options...)`,
-or just `New()` when `DISCORD_TOKEN` is set.
+Since v0.2.0, `New` takes only options: `New(WithToken(token), options...)`,
+or just `New()` when `DISCORD_TOKEN` is set. v0.1 code used
+`New(token, options...)`; the [changelog](../CHANGELOG.md) lists every renamed
+API.
 
 Set `DISCORD_TOKEN` and `DISCORD_GUILD_ID` in your environment or a local `.env`
 file. The guild ID keeps command publishing scoped to your development server.

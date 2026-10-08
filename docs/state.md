@@ -41,6 +41,27 @@ Use `State.Guild` when you do need a complete, mutable snapshot. Guard suggests
 these smaller reads when it observes repeatedly copying large collections;
 it never disables caches itself.
 
+`BasePermissions` and `Permissions` follow Discord's rules, including timeouts:
+a timed-out member who is neither the owner nor an administrator keeps only
+View Channel and Read Message History, and channel overwrites cannot restore
+the rest. A `GuildMemberUpdate` carries the member's full state, so a lifted
+timeout or a reset guild avatar is cleared from the cache too.
+
+`CanModerate` checks the role hierarchy before a kick, ban, timeout, or role
+change. The owner outranks everyone; otherwise the actor's highest role, and
+the bot's, must be strictly above the target's. A refusal is a
+`*ModerationError` whose message can be shown to the person who ran the
+command; `ErrGuildNotCached` and `ErrMemberNotCached` mean the cache cannot
+answer.
+
+```go
+if err := bot.State.CanModerate(guildID, actorID, targetID); err != nil {
+	return err // in an error-returning handler, a refusal is shown privately
+}
+```
+
+`Member.CanModerate(target)` is the same check from a bound member.
+
 Message caches are bounded independently per channel. They retain insertion
 order, update edited messages in place, keep reaction counts and pin
 timestamps coherent, and attach the cached objects to message delete events.
