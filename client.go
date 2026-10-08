@@ -415,10 +415,17 @@ func defaultHTTPClient() *http.Client {
 				Timeout:   10 * time.Second,
 				KeepAlive: 30 * time.Second,
 			}).DialContext,
-			ForceAttemptHTTP2:     true,
-			MaxIdleConns:          32,
-			MaxIdleConnsPerHost:   32,
-			IdleConnTimeout:       90 * time.Second,
+			ForceAttemptHTTP2:   true,
+			MaxIdleConns:        32,
+			MaxIdleConnsPerHost: 32,
+			IdleConnTimeout:     5 * time.Minute,
+			// A quiet bot keeps its connection to discord.com, so the first
+			// command after a lull does not pay for a new TLS handshake.
+			// Pings also find a dead connection before a request does.
+			HTTP2: &http.HTTP2Config{
+				SendPingTimeout: 30 * time.Second,
+				PingTimeout:     10 * time.Second,
+			},
 			TLSHandshakeTimeout:   10 * time.Second,
 			ExpectContinueTimeout: time.Second,
 		},

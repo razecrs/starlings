@@ -56,6 +56,13 @@ type InteractionResponseData struct {
 var ErrInteractionAlreadyAnswered = errors.New(
 	"starlings: this interaction has already been answered - use Followup instead")
 
+// route is the rate-limit key for this interaction's callback and webhook
+// requests. Discord limits them per interaction, so the key includes the
+// interaction ID; the token stays out of it because route keys can be logged.
+func (i *InteractionCreate) route(method, suffix string) string {
+	return method + " /interactions/" + i.ID.String() + suffix
+}
+
 // claimAnswer records the initial callback type. Only the first caller wins.
 func (i *InteractionCreate) claimAnswer(t CallbackType) bool {
 	return atomic.CompareAndSwapInt32(&i.answered, 0, int32(max(t, 1)))
@@ -86,7 +93,7 @@ func (i *InteractionCreate) Respond(ctx context.Context, resp InteractionRespons
 	return i.c.rest.do(ctx, request{
 		Method: http.MethodPost,
 		Path:   "/interactions/" + i.ID.String() + "/" + i.Token + "/callback",
-		Route:  "POST /interactions/{id}/{token}/callback",
+		Route:  i.route("POST", "/callback"),
 		Body:   resp,
 	}, nil)
 }
@@ -102,7 +109,7 @@ func (i *InteractionCreate) RespondFiles(ctx context.Context, resp InteractionRe
 	return i.c.rest.do(ctx, request{
 		Method: http.MethodPost,
 		Path:   "/interactions/" + i.ID.String() + "/" + i.Token + "/callback",
-		Route:  "POST /interactions/{id}/{token}/callback",
+		Route:  i.route("POST", "/callback"),
 		Body:   resp,
 		Files:  files,
 	}, nil)
@@ -175,7 +182,7 @@ func (i *InteractionCreate) Followup(ctx context.Context, data InteractionRespon
 	err := i.c.rest.do(ctx, request{
 		Method: http.MethodPost,
 		Path:   "/webhooks/" + i.ApplicationID.String() + "/" + i.Token,
-		Route:  "POST /webhooks/{id}/{token}",
+		Route:  i.route("POST", ""),
 		Body:   data,
 	}, &msg)
 	if err != nil {
@@ -190,7 +197,7 @@ func (i *InteractionCreate) FollowupFiles(ctx context.Context, data InteractionR
 	err := i.c.rest.do(ctx, request{
 		Method: http.MethodPost,
 		Path:   "/webhooks/" + i.ApplicationID.String() + "/" + i.Token,
-		Route:  "POST /webhooks/{id}/{token}",
+		Route:  i.route("POST", ""),
 		Body:   data,
 		Files:  files,
 	}, &msg)
@@ -206,7 +213,7 @@ func (i *InteractionCreate) Response(ctx context.Context) (*Message, error) {
 	err := i.c.rest.do(ctx, request{
 		Method: http.MethodGet,
 		Path:   "/webhooks/" + i.ApplicationID.String() + "/" + i.Token + "/messages/@original",
-		Route:  "GET /webhooks/{id}/{token}/messages/@original",
+		Route:  i.route("GET", "/messages/@original"),
 	}, &msg)
 	if err != nil {
 		return nil, err
@@ -225,7 +232,7 @@ func (i *InteractionCreate) EditFollowup(ctx context.Context, messageID Snowflak
 	err := i.c.rest.do(ctx, request{
 		Method: http.MethodPatch,
 		Path:   "/webhooks/" + i.ApplicationID.String() + "/" + i.Token + "/messages/" + messageID.String(),
-		Route:  "PATCH /webhooks/{id}/{token}/messages/{id}",
+		Route:  i.route("PATCH", "/messages/{id}"),
 		Body:   data,
 	}, &msg)
 	if err != nil {
@@ -240,7 +247,7 @@ func (i *InteractionCreate) EditFollowupFiles(ctx context.Context, messageID Sno
 	err := i.c.rest.do(ctx, request{
 		Method: http.MethodPatch,
 		Path:   "/webhooks/" + i.ApplicationID.String() + "/" + i.Token + "/messages/" + messageID.String(),
-		Route:  "PATCH /webhooks/{id}/{token}/messages/{id}",
+		Route:  i.route("PATCH", "/messages/{id}"),
 		Body:   data,
 		Files:  files,
 	}, &msg)
@@ -262,7 +269,7 @@ func (i *InteractionCreate) EditResponse(ctx context.Context, data InteractionRe
 	err := i.c.rest.do(ctx, request{
 		Method: http.MethodPatch,
 		Path:   "/webhooks/" + i.ApplicationID.String() + "/" + i.Token + "/messages/@original",
-		Route:  "PATCH /webhooks/{id}/{token}/messages/@original",
+		Route:  i.route("PATCH", "/messages/@original"),
 		Body:   data,
 	}, &msg)
 	if err != nil {
@@ -277,7 +284,7 @@ func (i *InteractionCreate) EditResponseFiles(ctx context.Context, data Interact
 	err := i.c.rest.do(ctx, request{
 		Method: http.MethodPatch,
 		Path:   "/webhooks/" + i.ApplicationID.String() + "/" + i.Token + "/messages/@original",
-		Route:  "PATCH /webhooks/{id}/{token}/messages/@original",
+		Route:  i.route("PATCH", "/messages/@original"),
 		Body:   data,
 		Files:  files,
 	}, &msg)
@@ -292,7 +299,7 @@ func (i *InteractionCreate) DeleteResponse(ctx context.Context) error {
 	return i.c.rest.do(ctx, request{
 		Method: http.MethodDelete,
 		Path:   "/webhooks/" + i.ApplicationID.String() + "/" + i.Token + "/messages/@original",
-		Route:  "DELETE /webhooks/{id}/{token}/messages/@original",
+		Route:  i.route("DELETE", "/messages/@original"),
 	}, nil)
 }
 

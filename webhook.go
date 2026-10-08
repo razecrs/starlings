@@ -84,7 +84,7 @@ func (c *Client) Webhook(ctx context.Context, webhookID Snowflake) (*Webhook, er
 	err := c.rest.do(ctx, request{
 		Method: http.MethodGet,
 		Path:   "/webhooks/" + webhookID.String(),
-		Route:  "GET /webhooks/{id}",
+		Route:  "GET /webhooks/" + webhookID.String(),
 	}, &out)
 	if err != nil {
 		return nil, err
@@ -99,7 +99,7 @@ func (c *Client) WebhookWithToken(ctx context.Context, webhookID Snowflake, toke
 	err := c.rest.do(ctx, request{
 		Method: http.MethodGet,
 		Path:   "/webhooks/" + webhookID.String() + "/" + url.PathEscape(token),
-		Route:  "GET /webhooks/{id}/{token}",
+		Route:  "GET /webhooks/" + webhookID.String() + "/{token}",
 	}, &out)
 	if err != nil {
 		return nil, err
@@ -113,7 +113,7 @@ func (c *Client) ModifyWebhook(ctx context.Context, webhookID Snowflake, params 
 	err := c.rest.do(ctx, request{
 		Method: http.MethodPatch,
 		Path:   "/webhooks/" + webhookID.String(),
-		Route:  "PATCH /webhooks/{id}",
+		Route:  "PATCH /webhooks/" + webhookID.String(),
 		Body:   params,
 		Reason: reason,
 	}, &out)
@@ -128,7 +128,7 @@ func (c *Client) DeleteWebhook(ctx context.Context, webhookID Snowflake, reason 
 	return c.rest.do(ctx, request{
 		Method: http.MethodDelete,
 		Path:   "/webhooks/" + webhookID.String(),
-		Route:  "DELETE /webhooks/{id}",
+		Route:  "DELETE /webhooks/" + webhookID.String(),
 		Reason: reason,
 	}, nil)
 }
@@ -138,7 +138,7 @@ func (c *Client) DeleteWebhookWithToken(ctx context.Context, webhookID Snowflake
 	return c.rest.do(ctx, request{
 		Method: http.MethodDelete,
 		Path:   "/webhooks/" + webhookID.String() + "/" + url.PathEscape(token),
-		Route:  "DELETE /webhooks/{id}/{token}",
+		Route:  "DELETE /webhooks/" + webhookID.String() + "/{token}",
 	}, nil)
 }
 
@@ -174,7 +174,7 @@ func (c *Client) ExecuteWebhook(ctx context.Context, webhookID Snowflake, token 
 	req := request{
 		Method: http.MethodPost,
 		Path:   "/webhooks/" + webhookID.String() + "/" + url.PathEscape(token) + query(v),
-		Route:  "POST /webhooks/{id}/{token}",
+		Route:  "POST /webhooks/" + webhookID.String() + "/{token}",
 		Body:   msg,
 	}
 	if !wait {
@@ -195,7 +195,7 @@ func (c *Client) WebhookMessageByID(ctx context.Context, webhookID Snowflake, to
 		Method: http.MethodGet,
 		Path: "/webhooks/" + webhookID.String() + "/" + url.PathEscape(token) +
 			"/messages/" + messageID.String(),
-		Route: "GET /webhooks/{id}/{token}/messages/{id}",
+		Route: "GET /webhooks/" + webhookID.String() + "/{token}/messages/{id}",
 	}, &out)
 	if err != nil {
 		return nil, err
@@ -210,7 +210,7 @@ func (c *Client) EditWebhookMessage(ctx context.Context, webhookID Snowflake, to
 		Method: http.MethodPatch,
 		Path: "/webhooks/" + webhookID.String() + "/" + url.PathEscape(token) +
 			"/messages/" + messageID.String(),
-		Route: "PATCH /webhooks/{id}/{token}/messages/{id}",
+		Route: "PATCH /webhooks/" + webhookID.String() + "/{token}/messages/{id}",
 		Body:  msg,
 	}, &out)
 	if err != nil {
@@ -225,6 +225,6 @@ func (c *Client) DeleteWebhookMessage(ctx context.Context, webhookID Snowflake, 
 		Method: http.MethodDelete,
 		Path: "/webhooks/" + webhookID.String() + "/" + url.PathEscape(token) +
 			"/messages/" + messageID.String(),
-		Route: "DELETE /webhooks/{id}/{token}/messages/{id}",
+		Route: "DELETE /webhooks/" + webhookID.String() + "/{token}/messages/{id}",
 	}, nil)
 }

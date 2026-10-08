@@ -216,7 +216,7 @@ func (c *Client) ExecuteSlackWebhook(ctx context.Context, webhookID Snowflake, t
 	return c.rest.do(ctx, request{
 		Method: http.MethodPost,
 		Path:   "/webhooks/" + webhookID.String() + "/" + url.PathEscape(token) + "/slack" + query(v),
-		Route:  "POST /webhooks/{id}/{token}/slack",
+		Route:  "POST /webhooks/" + webhookID.String() + "/{token}/slack",
 		Body:   payload,
 	}, nil)
 }
@@ -231,7 +231,7 @@ func (c *Client) ExecuteGitHubWebhook(ctx context.Context, webhookID Snowflake, 
 	return c.rest.do(ctx, request{
 		Method: http.MethodPost,
 		Path:   "/webhooks/" + webhookID.String() + "/" + url.PathEscape(token) + "/github" + query(v),
-		Route:  "POST /webhooks/{id}/{token}/github",
+		Route:  "POST /webhooks/" + webhookID.String() + "/{token}/github",
 		Body:   payload,
 	}, nil)
 }
@@ -251,7 +251,7 @@ func (c *Client) ModifyWebhookWithToken(ctx context.Context, webhookID Snowflake
 	err := c.rest.do(ctx, request{
 		Method: http.MethodPatch,
 		Path:   "/webhooks/" + webhookID.String() + "/" + url.PathEscape(token),
-		Route:  "PATCH /webhooks/{id}/{token}",
+		Route:  "PATCH /webhooks/" + webhookID.String() + "/{token}",
 		Body:   body,
 	}, &out)
 	if err != nil {
@@ -267,7 +267,7 @@ func (c *Client) OriginalWebhookMessage(ctx context.Context, webhookID Snowflake
 	err := c.rest.do(ctx, request{
 		Method: http.MethodGet,
 		Path:   "/webhooks/" + webhookID.String() + "/" + url.PathEscape(token) + "/messages/@original",
-		Route:  "GET /webhooks/{id}/{token}/messages/@original",
+		Route:  "GET /webhooks/" + webhookID.String() + "/{token}/messages/@original",
 	}, &out)
 	if err != nil {
 		return nil, err

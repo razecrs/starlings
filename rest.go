@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -41,6 +41,51 @@ type rest struct {
 	limiter *limiter
 	pacer   pacemaker
 	bufs    sync.Pool
+
+	// tokenRejected is set after Discord answers 401 to the bot token.
+	// Further requests would only add to the invalid-request count.
+	tokenRejected atomic.Bool
+}
+
+// ErrTokenRejected is returned for every bot-token request after Discord
+// has answered one with 401 Unauthorized. Discord asks clients to stop using
+// a rejected token, and repeated 401s count toward a temporary IP block.
+var ErrTokenRejected = errors.New("starlings: Discord rejected the bot token; requests are stopped until the client is recreated")
+
+// isInteractionRequest reports whether req answers an interaction: the
+// callback route, or follow-up webhooks addressed by the application ID and
+// interaction token.
+func (r *rest) isInteractionRequest(req request) bool {
+	if strings.HasPrefix(req.Path, "/interactions/") {
+		return true
+	}
+	if !strings.HasPrefix(req.Path, "/webhooks/") {
+		return false
+	}
+	app := r.c.rootClient().ApplicationID()
+	return !app.IsZero() && strings.HasPrefix(req.Path, "/webhooks/"+app.String()+"/")
+}
+
+// countInvalid tracks responses that count toward Cloudflare's invalid
+// request limit and stops bot-token requests after a 401.
+func (r *rest) countInvalid(req request, resp *http.Response) {
+	switch resp.StatusCode {
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests:
+	default:
+		return
+	}
+	if resp.StatusCode == http.StatusTooManyRequests && strings.EqualFold(resp.Header.Get("X-RateLimit-Scope"), "shared") {
+		return // Discord does not count shared-resource limits.
+	}
+	if resp.StatusCode == http.StatusUnauthorized && req.Auth == "" && !req.NoAuth {
+		if r.tokenRejected.CompareAndSwap(false, true) {
+			r.c.log.Error("starlings: Discord rejected the bot token (401); stopping REST requests")
+		}
+	}
+	if count, warn := r.limiter.invalid.add(time.Now()); warn {
+		r.c.log.Warn("starlings: many invalid requests; Discord blocks the IP at 10,000 in ten minutes",
+			"count", count, "window", invalidWindow)
+	}
 }
 
 type preparedBody struct {
@@ -206,15 +251,35 @@ func (r *rest) attempt(ctx context.Context, req request, body []byte, out any) (
 }
 
 func (r *rest) attemptPrepared(ctx context.Context, req request, body preparedBody, out any) (time.Duration, error) {
-	if err := r.pacer.wait(ctx); err != nil {
-		return 0, err
+	// Interaction callbacks and follow-ups have a three-second deadline and
+	// are exempt from Discord's global limit, so they skip the pacer and the
+	// global wait. Their own route buckets still apply.
+	interaction := r.isInteractionRequest(req)
+	botAuth := req.Auth == "" && !req.NoAuth
+	if botAuth && r.tokenRejected.Load() {
+		return 0, ErrTokenRejected
+	}
+	if !interaction {
+		if err := r.pacer.wait(ctx); err != nil {
+			return 0, err
+		}
 	}
 	b := r.limiter.bucketFor(req.Route)
-	if err := b.wait(ctx); err != nil {
+	waited, err := b.waitFor(ctx)
+	if err != nil {
 		return 0, err
 	}
-	if err := r.limiter.waitGlobal(ctx); err != nil {
-		return 0, err
+	defer b.settle()
+	if waited >= time.Millisecond {
+		r.c.emitSynthetic(&RateLimitWait{Method: req.Method, Route: req.Route, WaitSeconds: waited.Seconds()})
+	}
+	if !interaction && botAuth {
+		if err := r.limiter.global.take(ctx); err != nil {
+			return 0, err
+		}
+		if err := r.limiter.waitGlobal(ctx); err != nil {
+			return 0, err
+		}
 	}
 
 	rdr, contentLength, err := body.reader()
@@ -280,6 +345,8 @@ func (r *rest) attemptPrepared(ctx context.Context, req request, body preparedBo
 	defer resp.Body.Close()
 
 	b.update(resp.Header)
+	r.limiter.share(req.Route, b, resp.Header)
+	r.countInvalid(req, resp)
 
 	switch {
 	case resp.StatusCode == http.StatusTooManyRequests:
@@ -454,155 +521,4 @@ func (p *pacemaker) wait(ctx context.Context) error {
 	}
 	p.last = time.Now()
 	return nil
-}
-
-// limiter tracks Discord's rate limits: one bucket per route, plus a global
-// cap that applies across all of them.
-type limiter struct {
-	mu      sync.RWMutex
-	buckets map[string]*bucket
-
-	// globalUntil is set when Discord returns a global 429; every request
-	// waits for it.
-	globalMu    sync.Mutex
-	globalUntil time.Time
-}
-
-func newLimiter() *limiter {
-	return &limiter{buckets: make(map[string]*bucket, 16)}
-}
-
-func (l *limiter) bucketFor(route string) *bucket {
-	l.mu.RLock()
-	b := l.buckets[route]
-	l.mu.RUnlock()
-	if b != nil {
-		return b
-	}
-
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if b = l.buckets[route]; b != nil {
-		return b
-	}
-	b = &bucket{remaining: -1} // -1 means "not yet known"
-	l.buckets[route] = b
-	return b
-}
-
-// waitGlobal blocks while a global rate limit is in force.
-func (l *limiter) waitGlobal(ctx context.Context) error {
-	l.globalMu.Lock()
-	until := l.globalUntil
-	l.globalMu.Unlock()
-
-	d := time.Until(until)
-	if d <= 0 {
-		return nil
-	}
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(d):
-		return nil
-	}
-}
-
-// handle429 reads the retry delay from a 429 response and, if the limit was
-// global, records it so every other request waits too.
-func (l *limiter) handle429(resp *http.Response, body []byte) (time.Duration, bool) {
-	wait := time.Second
-	global := strings.EqualFold(resp.Header.Get("X-RateLimit-Global"), "true")
-	var payload struct {
-		RetryAfter float64 `json:"retry_after"`
-		Global     bool    `json:"global"`
-	}
-	if len(body) > 0 && json.Unmarshal(body, &payload) == nil {
-		if payload.RetryAfter > 0 {
-			wait = time.Duration(payload.RetryAfter * float64(time.Second))
-		}
-		global = global || payload.Global
-	}
-
-	if payload.RetryAfter <= 0 {
-		if v := resp.Header.Get("Retry-After"); v != "" {
-			if secs, err := strconv.ParseFloat(v, 64); err == nil {
-				wait = time.Duration(secs * float64(time.Second))
-			}
-		}
-	}
-
-	if global {
-		l.globalMu.Lock()
-		if until := time.Now().Add(wait); until.After(l.globalUntil) {
-			l.globalUntil = until
-		}
-		l.globalMu.Unlock()
-	}
-	return wait, global
-}
-
-// bucket is the state of one Discord rate-limit bucket.
-type bucket struct {
-	mu        sync.Mutex
-	limit     int
-	remaining int // -1 until the first response tells us
-	resetAt   time.Time
-}
-
-// wait blocks until the bucket has room, then claims one request from it.
-//
-// The lock is held only for the accounting, not across the HTTP call, so
-// several requests in a bucket with headroom still go out concurrently.
-func (b *bucket) wait(ctx context.Context) error {
-	for {
-		b.mu.Lock()
-		if b.remaining != 0 {
-			if b.remaining > 0 {
-				b.remaining--
-			}
-			b.mu.Unlock()
-			return nil
-		}
-		d := time.Until(b.resetAt)
-		b.mu.Unlock()
-
-		if d <= 0 {
-			// The window has passed; let the next response refresh the count.
-			b.mu.Lock()
-			if b.remaining == 0 && time.Now().After(b.resetAt) {
-				b.remaining = -1
-			}
-			b.mu.Unlock()
-			continue
-		}
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(d):
-		}
-	}
-}
-
-// update refreshes the bucket from a response's rate-limit headers.
-func (b *bucket) update(h http.Header) {
-	remaining := h.Get("X-RateLimit-Remaining")
-	resetAfter := h.Get("X-RateLimit-Reset-After")
-	if remaining == "" && resetAfter == "" {
-		return
-	}
-
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	if v, err := strconv.Atoi(h.Get("X-RateLimit-Limit")); err == nil {
-		b.limit = v
-	}
-	if v, err := strconv.Atoi(remaining); err == nil {
-		b.remaining = v
-	}
-	if v, err := strconv.ParseFloat(resetAfter, 64); err == nil {
-		b.resetAt = time.Now().Add(time.Duration(v * float64(time.Second)))
-	}
 }

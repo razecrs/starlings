@@ -274,7 +274,7 @@ func (c *Client) ExecuteWebhookFiles(ctx context.Context, webhookID Snowflake, t
 	req := request{
 		Method: http.MethodPost,
 		Path:   "/webhooks/" + webhookID.String() + "/" + url.PathEscape(token) + query(v),
-		Route:  "POST /webhooks/{id}/{token}", Body: msg, Files: files,
+		Route:  "POST /webhooks/" + webhookID.String() + "/{token}", Body: msg, Files: files,
 	}
 	if !wait {
 		return nil, c.rest.do(ctx, req, nil)
@@ -293,7 +293,7 @@ func (c *Client) EditWebhookMessageFiles(ctx context.Context, webhookID Snowflak
 		Method: http.MethodPatch,
 		Path: "/webhooks/" + webhookID.String() + "/" + url.PathEscape(token) +
 			"/messages/" + messageID.String(),
-		Route: "PATCH /webhooks/{id}/{token}/messages/{id}",
+		Route: "PATCH /webhooks/" + webhookID.String() + "/{token}/messages/{id}",
 		Body:  msg, Files: files,
 	}, &out)
 	if err != nil {

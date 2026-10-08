@@ -69,6 +69,23 @@ func (r RateLimit) Wait() time.Duration {
 
 func (RateLimit) eventName() string { return "REST_RATE_LIMIT" }
 
+// RateLimitWait fires when a REST request waited for a rate-limit bucket that
+// Starlings already knew was empty. Unlike RateLimit, nothing was rejected;
+// it shows where the bot spends time waiting on Discord.
+type RateLimitWait struct {
+	eventBase   `json:"-"`
+	Method      string  `json:"method"`
+	Route       string  `json:"route"`
+	WaitSeconds float64 `json:"wait_seconds"`
+}
+
+// Wait returns WaitSeconds as a Go duration.
+func (r RateLimitWait) Wait() time.Duration {
+	return time.Duration(r.WaitSeconds * float64(time.Second))
+}
+
+func (RateLimitWait) eventName() string { return "REST_RATE_LIMIT_WAIT" }
+
 // Ready fires once the gateway has accepted the connection and sent the
 // initial state. It is the signal that the bot is online.
 type Ready struct {

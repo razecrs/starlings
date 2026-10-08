@@ -12,13 +12,14 @@ import (
 
 // clientServedBy returns a client whose REST requests are answered in process
 // by handler, with Discord's real base URL left in place.
-func clientServedBy(handler http.Handler) *Client {
+func clientServedBy(handler http.Handler, opts ...Option) *Client {
 	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, r)
 		return recorder.Result(), nil
 	})
-	return New("token", WithHTTPClient(&http.Client{Transport: transport}), WithLogger(discardLogger()))
+	base := []Option{WithHTTPClient(&http.Client{Transport: transport}), WithLogger(discardLogger())}
+	return New("token", append(base, opts...)...)
 }
 
 func TestMessageHistoryPagesUntilShortPage(t *testing.T) {

@@ -55,6 +55,29 @@ them.
 - `WithMemberChunking` requests the full member list for guilds whose
   GUILD_CREATE was incomplete.
 
+### REST
+
+- A route whose limits are not known yet sends one request first, then as
+  many as Discord reports, instead of a burst that earns 429s.
+- Responses that arrive out of order can no longer reopen a bucket that is
+  already used up, and a reset window is refilled only once.
+- Routes that Discord reports as one bucket share one local count.
+- Interaction callbacks and webhook requests are rate-limited per
+  interaction and per webhook, as Discord counts them, instead of in one
+  shared bucket.
+- Interaction callbacks and follow-ups skip `WithPacing` and the global limit,
+  which Discord does not apply to them.
+- Bot requests are paced to the global limit of 50 per second before Discord
+  answers 429. `WithGlobalRateLimit` changes the rate.
+- After Discord answers 401 to the bot token, further requests return
+  `ErrTokenRejected` without being sent. `Client.InvalidRequests` reports
+  the 401, 403, and 429 count that Cloudflare limits to 10,000 per ten
+  minutes.
+- `FailFast(ctx)` makes a call return a `*RateLimitError` instead of waiting.
+- `RateLimitWait` reports time spent waiting on a known-empty bucket.
+- The default HTTP client keeps its connection to Discord for five minutes
+  and checks it with HTTP/2 pings.
+
 ### Added
 
 - `State.CanModerate` checks the role hierarchy for the member, the target,
