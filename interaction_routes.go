@@ -115,3 +115,21 @@ func (i *InteractionCreate) AttachmentOption(name string) *Attachment {
 	}
 	return Ref(*value)
 }
+
+// Focused returns the option the user is typing in an autocomplete
+// interaction, searching subcommands too, or nil.
+func (i *InteractionCreate) Focused() *InteractionOption {
+	var walk func([]InteractionOption) *InteractionOption
+	walk = func(options []InteractionOption) *InteractionOption {
+		for n := range options {
+			if options[n].Focused {
+				return &options[n]
+			}
+			if found := walk(options[n].Options); found != nil {
+				return found
+			}
+		}
+		return nil
+	}
+	return walk(i.Data.Options)
+}

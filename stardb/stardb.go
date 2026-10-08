@@ -14,8 +14,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	mrand "math/rand/v2"
 	"net/http"
+	"reflect"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -51,8 +54,10 @@ type atomicUpdater interface {
 
 // Update atomically loads, changes, and saves a value. If key does not exist,
 // value starts as an independent JSON copy of initial. On error the returned
-// value is zero. A callback can run up to eight times after conflicts; it must
-// not perform side effects or call back into the same file store.
+// value is zero. Updates from one process to the same key run one at a time.
+// After a conflicting write from another process the callback can run again,
+// up to eight times in all, so it must not perform side effects or call back
+// into the same file store.
 //
 //	counter, err := stardb.Update(ctx, store, "commands", 0, func(n *int) error {
 //		*n = *n + 1
@@ -86,12 +91,71 @@ func Update[T any](ctx context.Context, store Store, key string, initial T, chan
 		}
 		return nil
 	}
+	// Updates to one key from this process queue up here, so they never
+	// conflict with each other; the backend's own check still guards against
+	// other processes.
+	unlock := lockUpdate(store, key)
 	err = updater.update(ctx, key, &value, reset, func() error { return change(&value) })
+	unlock()
 	if err != nil {
 		var zero T
 		return zero, err
 	}
 	return value, err
+}
+
+type updateKey struct {
+	store Store
+	key   string
+}
+
+type updateLock struct {
+	mu   sync.Mutex
+	refs int
+}
+
+var updateLocks = struct {
+	sync.Mutex
+	m map[updateKey]*updateLock
+}{m: make(map[updateKey]*updateLock)}
+
+// lockUpdate serialises Update calls for one key of one store and returns the
+// unlock function. Locks are removed once nobody holds or waits for them.
+func lockUpdate(store Store, key string) func() {
+	if !reflect.TypeOf(store).Comparable() {
+		return func() {}
+	}
+	k := updateKey{store, key}
+	updateLocks.Lock()
+	l := updateLocks.m[k]
+	if l == nil {
+		l = &updateLock{}
+		updateLocks.m[k] = l
+	}
+	l.refs++
+	updateLocks.Unlock()
+	l.mu.Lock()
+	return func() {
+		l.mu.Unlock()
+		updateLocks.Lock()
+		if l.refs--; l.refs == 0 {
+			delete(updateLocks.m, k)
+		}
+		updateLocks.Unlock()
+	}
+}
+
+// conflictBackoff waits a short, jittered time before retrying an update that
+// lost a race with another process.
+func conflictBackoff(ctx context.Context, attempt int) error {
+	d := time.Duration(1<<min(attempt, 6)) * time.Millisecond
+	d += time.Duration(mrand.Int64N(int64(d) + 1))
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(d):
+		return nil
+	}
 }
 
 // Load retrieves a value without requiring a temporary declaration.

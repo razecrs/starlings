@@ -41,10 +41,51 @@ func (e *APIError) Error() string {
 	for _, fe := range e.Errors {
 		s += fmt.Sprintf("\n  %s: %s", sanitizeUntrustedText(fe.Path), sanitizeUntrustedText(fe.Message))
 	}
-	if len(e.Errors) == 0 && len(e.Body) > 0 {
+	if len(e.Errors) == 0 && e.Message == "" && len(e.Body) > 0 {
+		// Only when the body could not be read as an error; otherwise it
+		// repeats the message and code shown above.
 		s += fmt.Sprintf("\n  body: %s", sanitizeUntrustedText(string(e.Body)))
 	}
+	if hint := e.UserMessage(); hint != "" {
+		s += " - " + hint
+	}
 	return s
+}
+
+// UserMessage explains a common Discord refusal in words the person who used
+// a command can act on, or returns "" for codes without a safe explanation.
+// Error-returning handlers show it instead of a generic failure, and the full
+// error still goes to the log.
+func (e *APIError) UserMessage() string {
+	switch e.Code {
+	case ErrorMissingPermissions:
+		return "I don't have permission to do that here. Check my role and this channel's permission overrides."
+	case ErrorMissingAccess:
+		return "I can't access that channel or resource."
+	case ErrorUnknownChannel:
+		return "That channel no longer exists."
+	case ErrorUnknownMember:
+		return "That member is not in this server."
+	case ErrorUnknownMessage:
+		return "That message no longer exists."
+	case ErrorUnknownRole:
+		return "That role no longer exists."
+	case ErrorUnknownUser:
+		return "That user does not exist."
+	case ErrorUnknownBan:
+		return "That user is not banned."
+	case ErrorCannotMessageUser:
+		return "That user does not accept direct messages from me."
+	case ErrorBulkDeleteTooOld:
+		return "Messages older than 14 days cannot be deleted in bulk."
+	case ErrorMaximumPins:
+		return "This channel already has the maximum number of pins."
+	case ErrorMaximumGuildRoles:
+		return "This server already has the maximum number of roles."
+	case ErrorMaximumChannels:
+		return "This server already has the maximum number of channels."
+	}
+	return ""
 }
 
 // HTTPStatus reports the HTTP status of err if it is an APIError, and 0 otherwise.

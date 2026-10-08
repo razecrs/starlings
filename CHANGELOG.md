@@ -160,6 +160,27 @@ user.Send("a direct message")
   the delay, and `NoAutoDefer` turns it off for a command that opens a modal
   after slow work.
 
+### Moderation helpers
+
+- `Client.Purge` and `Channel.Purge` delete recent messages, optionally only
+  matching ones. Messages under 14 days old are bulk-deleted; older ones are
+  deleted one at a time up to a limit.
+- `APIError.UserMessage` explains common refusals, such as missing
+  permissions or an unknown member, in words the user can act on.
+  Error-returning handlers show it instead of a generic failure, and the error
+  text itself now ends with the explanation.
+- Modal argument structs are filled from selects as well as text inputs.
+- `InteractionCreate.Focused` returns the option being typed in autocomplete.
+- `Pager.Turn` re-renders a page in place, for buttons that change what a
+  page lists. `User.SendEmbed` and `Member.SendEmbed` send an embed by DM.
+
+### StarDB
+
+- Concurrent `Update` calls for the same key in one process now run one at a
+  time instead of competing for the retry budget, so a burst of updates no
+  longer ends in `ErrConflict`. Conflicts with other processes back off with
+  jitter before retrying.
+
 ### Startup and memory
 
 - While asking Discord how many shards to use, the client already opens the

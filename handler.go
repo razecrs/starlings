@@ -123,7 +123,7 @@ func (c *Client) runHandler(name string, i *InteractionCreate, fn HandlerFunc) {
 		return fn(i)
 	}()
 	var user userFacing
-	isUser := errors.As(err, &user)
+	isUser := errors.As(err, &user) && user.UserMessage() != ""
 	if guard != nil {
 		var failure error
 		if err != nil && !isUser {

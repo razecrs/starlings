@@ -211,6 +211,17 @@ func (p *Pager) Show(i *InteractionCreate, arg string, ephemeral bool) error {
 	return i.ReplyComplex(data)
 }
 
+// Turn shows page of the view by editing the message the interaction came
+// from, such as after a button on the page changed what it lists. A page past
+// the end shows the last page.
+func (p *Pager) Turn(i *InteractionCreate, page int, arg string) error {
+	data, err := p.page(i, page, arg)
+	if err != nil {
+		return err
+	}
+	return i.UpdateMessage(data)
+}
+
 func (p *Pager) turn(i *InteractionCreate) error {
 	if owner := i.ParamID("owner"); owner != i.Invoker().ID {
 		return UserErrorf("Only <@%s> can turn these pages.", owner)
@@ -253,4 +264,14 @@ func (p *Pager) page(i *InteractionCreate, page int, arg string) (InteractionRes
 		data.Embeds = []Embed{*out.Embed}
 	}
 	return data, nil
+}
+
+// SendEmbed sends the user one embed by direct message.
+func (u *User) SendEmbed(e *Embed) (*Message, error) {
+	return u.SendComplex(SendData{Embeds: []Embed{*e}, AllowedMentions: NoMentions()})
+}
+
+// SendEmbed sends the member one embed by direct message.
+func (m *Member) SendEmbed(e *Embed) (*Message, error) {
+	return m.SendComplex(SendData{Embeds: []Embed{*e}, AllowedMentions: NoMentions()})
 }

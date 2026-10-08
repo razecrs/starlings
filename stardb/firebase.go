@@ -136,6 +136,9 @@ func (s *FirebaseStore) update(ctx context.Context, key string, destination any,
 		headers.Set("If-Match", etag)
 		_, err = remoteRequest(ctx, s.client, http.MethodPut, s.endpoint(key, false), headers, record, s.cfg.limits.MaxResponseBytes, nil, "firebase", http.StatusOK, http.StatusNoContent)
 		if errors.Is(err, ErrConflict) {
+			if err := conflictBackoff(ctx, attempt); err != nil {
+				return err
+			}
 			continue
 		}
 		if err != nil {

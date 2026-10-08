@@ -200,10 +200,17 @@ func adaptHandler(what string, handler any, source argSource, description string
 			})
 		case argsFromModal:
 			decode = planFields(argsType, what, func(i *InteractionCreate, name string) (string, bool) {
-				if i.Data.Component(name) == nil {
+				c := i.Data.Component(name)
+				if c == nil {
 					return "", false
 				}
-				return i.TextValue(name), true
+				if text, ok := c.Value.(string); ok {
+					return text, true
+				}
+				if len(c.Values) > 0 {
+					return c.Values[0], true // the first choice of a select
+				}
+				return "", false
 			})
 		}
 	}
@@ -348,7 +355,8 @@ func (c *Client) Button(pattern string, handler any) func() {
 }
 
 // Modal handles a submitted modal whose custom ID matches pattern. A struct
-// parameter is filled from the modal's text inputs, matched by custom ID.
+// parameter is filled from the modal's text inputs and the first choice of
+// its selects, matched by custom ID.
 func (c *Client) Modal(pattern string, handler any) func() {
 	h := adaptHandler("modal "+strconv.Quote(pattern), handler, argsFromModal, "")
 	return c.OnModal(pattern, func(i *InteractionCreate) { i.c.runHandler("modal "+pattern, i, h.call) })

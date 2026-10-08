@@ -237,6 +237,9 @@ func (s *SQLStore) update(ctx context.Context, key string, destination any, rese
 			return sqlFailure("read update result", err)
 		}
 		if affected == 0 {
+			if err := conflictBackoff(ctx, attempt); err != nil {
+				return err
+			}
 			continue
 		}
 		s.cfg.log(ctx, slog.LevelDebug, "stardb update", "sql", key)
