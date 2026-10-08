@@ -378,6 +378,10 @@ type InteractionCreate struct {
 	// has not answered in time.
 	auto *autoDeferState `json:"-"`
 
+	// finished is set once a deferred response has been edited, deleted, or
+	// followed up, so failure reporting knows whether "thinking..." remains.
+	finished int32 `json:"-"`
+
 	// respondHTTP is set only for interactions received through an HTTP
 	// endpoint. Gateway interactions leave it nil and use the REST callback.
 	respondHTTP func(context.Context, InteractionResponse, []File) error

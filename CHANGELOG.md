@@ -55,6 +55,24 @@ them.
 - `WithMemberChunking` requests the full member list for guilds whose
   GUILD_CREATE was incomplete.
 
+### Shorter commands
+
+- `starlings.Slash(bot, name, description, fn)` takes a handler of the form
+  `func(*InteractionCreate, Args) error`. The command's options come from the
+  fields of `Args` and their tags, and the handler receives decoded values.
+  The definition is checked against Discord's rules when it is registered.
+- `SlashRoute.Run` sets an error-returning handler. A `*UserError` (see
+  `UserErrorf`) or a `*ModerationError` is shown privately to the user. Any
+  other error, or a panic, is logged and the user sees a generic message, so
+  internal details never reach Discord.
+- `SlashRoute.Require` sets Discord's default member permissions and checks
+  them again at runtime, since server admins can override the default.
+  `SlashRoute.BotNeeds` checks the bot's permissions in the channel. Both
+  answer with the missing permission names.
+- `ParseDuration` reads lengths of time such as `10m`, `1h30m`, or `3d`.
+- A panic in any event handler is logged with its stack instead of stopping
+  the process.
+
 ### Interactions
 
 - Slash commands, buttons, selects, and modals are acknowledged

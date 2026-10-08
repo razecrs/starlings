@@ -22,6 +22,8 @@ type slashEntry struct {
 	private      bool
 	timeout      time.Duration
 	noAutoDefer  bool
+	require      Permissions
+	botNeeds     Permissions
 }
 
 type commandKey struct {
@@ -186,8 +188,14 @@ func (c *Client) routeInteraction(i *InteractionCreate) {
 		return
 	}
 	if entry.task != nil {
+		if !entry.checkPermissions(i) {
+			return
+		}
 		c.runTask(runner, entry, i)
 	} else if entry.fn != nil {
+		if !entry.checkPermissions(i) {
+			return
+		}
 		if !entry.noAutoDefer {
 			i.armAutoDefer(c.autoDefer, CallbackDeferredChannelMessage, entry.private)
 		}

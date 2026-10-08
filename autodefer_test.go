@@ -13,8 +13,9 @@ import (
 
 // callLog records the REST calls an interaction makes, in order.
 type callLog struct {
-	mu    sync.Mutex
-	calls []string
+	mu     sync.Mutex
+	calls  []string
+	bodies []string
 }
 
 func (l *callLog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -51,6 +52,7 @@ func (l *callLog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	l.mu.Lock()
 	l.calls = append(l.calls, entry)
+	l.bodies = append(l.bodies, string(body))
 	l.mu.Unlock()
 	if r.Method == http.MethodPost && parts[1] == "webhooks" || r.Method == http.MethodPatch {
 		w.Header().Set("Content-Type", "application/json")
@@ -58,6 +60,12 @@ func (l *callLog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (l *callLog) sentBodies() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return strings.Join(l.bodies, "\n")
 }
 
 func (l *callLog) get() []string {

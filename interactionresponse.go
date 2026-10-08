@@ -182,6 +182,7 @@ func (i *InteractionCreate) Defer(ephemeral bool) error {
 // Followup sends an additional message after the initial response. It is how
 // you answer once Defer has bought you time.
 func (i *InteractionCreate) Followup(ctx context.Context, data InteractionResponseData) (*Message, error) {
+	atomic.StoreInt32(&i.finished, 1)
 	var msg Message
 	err := i.c.rest.do(ctx, request{
 		Method: http.MethodPost,
@@ -197,6 +198,7 @@ func (i *InteractionCreate) Followup(ctx context.Context, data InteractionRespon
 
 // FollowupFiles sends an interaction follow-up with attachments.
 func (i *InteractionCreate) FollowupFiles(ctx context.Context, data InteractionResponseData, files ...File) (*Message, error) {
+	atomic.StoreInt32(&i.finished, 1)
 	var msg Message
 	err := i.c.rest.do(ctx, request{
 		Method: http.MethodPost,
@@ -269,6 +271,7 @@ func (i *InteractionCreate) DeleteFollowup(ctx context.Context, messageID Snowfl
 // EditResponse rewrites the initial response, which is the other way to finish
 // a deferred interaction.
 func (i *InteractionCreate) EditResponse(ctx context.Context, data InteractionResponseData) (*Message, error) {
+	atomic.StoreInt32(&i.finished, 1)
 	var msg Message
 	err := i.c.rest.do(ctx, request{
 		Method: http.MethodPatch,
@@ -284,6 +287,7 @@ func (i *InteractionCreate) EditResponse(ctx context.Context, data InteractionRe
 
 // EditResponseFiles edits the original interaction response and uploads files.
 func (i *InteractionCreate) EditResponseFiles(ctx context.Context, data InteractionResponseData, files ...File) (*Message, error) {
+	atomic.StoreInt32(&i.finished, 1)
 	var msg Message
 	err := i.c.rest.do(ctx, request{
 		Method: http.MethodPatch,
@@ -300,6 +304,7 @@ func (i *InteractionCreate) EditResponseFiles(ctx context.Context, data Interact
 
 // DeleteResponse removes the initial response.
 func (i *InteractionCreate) DeleteResponse(ctx context.Context) error {
+	atomic.StoreInt32(&i.finished, 1)
 	return i.c.rest.do(ctx, request{
 		Method: http.MethodDelete,
 		Path:   "/webhooks/" + i.ApplicationID.String() + "/" + i.Token + "/messages/@original",

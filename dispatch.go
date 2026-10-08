@@ -3,6 +3,8 @@ package starlings
 import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"fmt"
+	"runtime/debug"
 	"sync/atomic"
 	"time"
 )
@@ -222,14 +224,25 @@ func registerEvent[E Event](c *Client, h func(*E), internal bool) func() {
 	}
 }
 
+// invokeApplicationHandler runs one application handler. A panic is logged
+// with its stack and the bot keeps running, the way net/http treats a panic
+// in one request: one bad handler should not take every guild offline.
 func invokeApplicationHandler[E Event](c *Client, name string, handler func(*E), event *E) {
-	if c.guard == nil {
-		handler(event)
-		return
+	var started time.Time
+	if c.guard != nil {
+		started = time.Now()
 	}
-	started := time.Now()
+	defer func() {
+		var err error
+		if v := recover(); v != nil {
+			err = fmt.Errorf("panic: %v", v)
+			c.log.Error("starlings: event handler panicked", "event", name, "panic", v, "stack", string(debug.Stack()))
+		}
+		if c.guard != nil {
+			c.guard.observe("handler."+name, GuardApplication, time.Since(started), err)
+		}
+	}()
 	handler(event)
-	c.guard.observe("handler."+name, GuardApplication, time.Since(started), nil)
 }
 
 func removeEvent[E Event](c *Client, name string, id uint64) {
