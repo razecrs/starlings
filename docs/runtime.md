@@ -60,7 +60,7 @@ With automatic sharding, Starlings asks Discord for the recommended count and st
 Use manual sharding when separate processes or schedulers own the fleet:
 
 ```go
-bot := starlings.New(token,
+bot := starlings.New(starlings.WithToken(token),
 	starlings.WithAutoSharding(false),
 	starlings.WithShard(shardID, shardCount),
 	starlings.WithIntents(intents))

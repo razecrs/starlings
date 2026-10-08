@@ -17,7 +17,7 @@ type failingRoundTripper struct{ err error }
 func (f failingRoundTripper) RoundTrip(*http.Request) (*http.Response, error) { return nil, f.err }
 
 func TestRESTRefusesClientTokenForUntrustedBase(t *testing.T) {
-	c := New("super-secret-token", WithLogger(discardLogger()))
+	c := New(WithToken("super-secret-token"), WithLogger(discardLogger()))
 	_, err := c.RequestRaw(context.Background(), RESTRequest{
 		Method: http.MethodGet,
 		Base:   "https://attacker.invalid",
@@ -75,7 +75,7 @@ func TestRESTAllowsExplicitAuthOrNoAuthForCustomBase(t *testing.T) {
 		{Method: http.MethodGet, Base: "https://custom.invalid", Path: "/x", NoAuth: true},
 		{Method: http.MethodGet, Base: "https://custom.invalid", Path: "/x", Auth: "Bearer explicit"},
 	} {
-		c := New("client-token", WithLogger(discardLogger()), WithHTTPClient(&http.Client{
+		c := New(WithToken("client-token"), WithLogger(discardLogger()), WithHTTPClient(&http.Client{
 			Transport: failingRoundTripper{err: errors.New("expected transport stop")},
 		}))
 		_, err := c.rest.attempt(context.Background(), req.internal(true), nil, new([]byte))
@@ -101,7 +101,7 @@ func TestSensitiveRequestPathsAreRedacted(t *testing.T) {
 
 func TestTransportErrorsDoNotLeakWebhookToken(t *testing.T) {
 	const secret = "this-is-a-webhook-secret"
-	c := New("client-token", WithLogger(discardLogger()), WithHTTPClient(&http.Client{
+	c := New(WithToken("client-token"), WithLogger(discardLogger()), WithHTTPClient(&http.Client{
 		Transport: failingRoundTripper{err: errors.New("network down")},
 	}))
 	req := RESTRequest{
@@ -120,7 +120,7 @@ func TestTransportErrorsDoNotLeakWebhookToken(t *testing.T) {
 
 func TestMalformedRequestURLDoesNotLeakWebhookToken(t *testing.T) {
 	const secret = "this-is-a-webhook-secret"
-	c := New("client-token", WithLogger(discardLogger()))
+	c := New(WithToken("client-token"), WithLogger(discardLogger()))
 	req := RESTRequest{Method: http.MethodPost, Path: "/webhooks/123/" + secret + "\x7f", NoAuth: true}
 	_, err := c.rest.attempt(context.Background(), req.internal(true), nil, new([]byte))
 	if err == nil {
@@ -132,7 +132,7 @@ func TestMalformedRequestURLDoesNotLeakWebhookToken(t *testing.T) {
 }
 
 func TestNilHTTPClientOptionKeepsSafeDefault(t *testing.T) {
-	c := New("token", WithHTTPClient(nil))
+	c := New(WithToken("token"), WithHTTPClient(nil))
 	if c.rest.http == nil {
 		t.Fatal("WithHTTPClient(nil) disabled the HTTP client")
 	}

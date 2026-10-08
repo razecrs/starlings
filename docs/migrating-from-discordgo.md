@@ -7,7 +7,7 @@ Starlings does not try to rename every Discord concept. Most structs and IDs sho
 DiscordGo commonly starts with `discordgo.New`, `AddHandler`, and `Open`. Starlings uses one blocking lifecycle:
 
 ```go
-bot := starlings.New(token, starlings.WithIntents(intents))
+bot := starlings.New(starlings.WithToken(token), starlings.WithIntents(intents))
 bot.On(func(m *starlings.MessageCreate) {
 	// ...
 })

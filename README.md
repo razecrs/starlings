@@ -5,7 +5,7 @@
 Starlings is a Discord library for Go. It keeps the common bot code short without hiding the gateway, state, voice, or REST API when you need control.
 
 ```go
-bot := starlings.NewCommandBot(os.Getenv("DISCORD_TOKEN"))
+bot := starlings.NewCommandBot()
 
 bot.Command("ping", func(m *starlings.MessageCreate, _ []string) {
 	m.Reply("pong")
@@ -107,7 +107,7 @@ colour, err := bot.State.UserColor(guildID, userID)
 Lookups return safe snapshots rather than writable internal maps. Cache categories and message limits are individually configurable. Manual mode runs the same mutation code explicitly when an application needs to own timing:
 
 ```go
-bot := starlings.New(token,
+bot := starlings.New(starlings.WithToken(token),
 	starlings.WithStateMode(starlings.StateManual),
 	starlings.WithGuard())
 
@@ -146,7 +146,7 @@ Starlog is optional terminal-native observability:
 
 ```go
 logs := starlings.NewStarlog("my bot")
-bot := starlings.New(token, starlings.WithStarlog(logs))
+bot := starlings.New(starlings.WithToken(token), starlings.WithStarlog(logs))
 ```
 
 In a terminal it renders a live dashboard with bot and shard status, CPU, heap, goroutines, log rate, scrollback, media activity, and animated Star Pets. Outside a terminal it falls back to a clean stream, so CI and files never receive dashboard control codes.

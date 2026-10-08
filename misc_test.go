@@ -29,7 +29,7 @@ func TestGatewayUsesPublicUnauthenticatedEndpoint(t *testing.T) {
 			Request:    request,
 		}, nil
 	})
-	c := New("secret-token", WithHTTPClient(&http.Client{Transport: transport}), WithLogger(discardLogger()))
+	c := New(WithToken("secret-token"), WithHTTPClient(&http.Client{Transport: transport}), WithLogger(discardLogger()))
 
 	got, err := c.Gateway(context.Background())
 	if err != nil {

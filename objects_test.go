@@ -37,7 +37,7 @@ func TestInteractionMemberActsOnItself(t *testing.T) {
 	rec := &restRecorder{}
 	c := clientServedBy(rec)
 	got := make(chan error, 1)
-	Slash(c, "ban", "Ban", func(_ *InteractionCreate, a banArgs) error {
+	c.Slash("ban", "Ban", func(_ *InteractionCreate, a banArgs) error {
 		got <- a.User.Ban(a.Reason, time.Hour)
 		return nil
 	})

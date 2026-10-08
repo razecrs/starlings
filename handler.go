@@ -53,7 +53,8 @@ func (r *SlashRoute) Run(fn HandlerFunc) *SlashRoute {
 		panic("starlings: nil handler")
 	}
 	return r.update(func(e *slashEntry) {
-		e.fn = func(i *InteractionCreate) { i.c.runHandler(e.def.Name, i, fn) }
+		name := "/" + e.def.Name
+		e.fn = func(i *InteractionCreate) { i.c.runHandler(name, i, fn) }
 	})
 }
 
@@ -97,20 +98,40 @@ func (e *slashEntry) checkPermissions(i *InteractionCreate) bool {
 }
 
 // runHandler calls an error-returning handler and reports its result.
+//
+// With Guard enabled, each route is measured on its own, as "/ping",
+// "button ticket:close:{id}", and so on. Errors meant for the user are not
+// counted as failures.
 func (c *Client) runHandler(name string, i *InteractionCreate, fn HandlerFunc) {
+	guard := c.rootClient().guard
+	var started time.Time
+	if guard != nil {
+		started = time.Now()
+	}
 	err := func() (err error) {
 		defer func() {
+			if !c.recoverPanics {
+				return
+			}
 			if v := recover(); v != nil {
 				err = fmt.Errorf("panic: %v\n%s", v, debug.Stack())
 			}
 		}()
 		return fn(i)
 	}()
+	var user userFacing
+	isUser := errors.As(err, &user)
+	if guard != nil {
+		var failure error
+		if err != nil && !isUser {
+			failure = err
+		}
+		guard.observe(name, GuardApplication, time.Since(started), failure)
+	}
 	if err == nil {
 		return
 	}
-	var user userFacing
-	if errors.As(err, &user) {
+	if isUser {
 		c.replyFailure(i, user.UserMessage())
 		return
 	}

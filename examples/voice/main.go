@@ -26,7 +26,7 @@ func main() {
 		log.Fatal("set DISCORD_TOKEN and VOICE_FILE")
 	}
 
-	bot := starlings.New(token,
+	bot := starlings.New(starlings.WithToken(token),
 		starlings.WithIntents(starlings.IntentGuilds|starlings.IntentGuildVoiceStates),
 		starlings.WithStatus(starlings.StatusOnline, starlings.Listening("voice over starlings")),
 	)

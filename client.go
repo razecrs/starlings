@@ -49,6 +49,10 @@ type Client struct {
 	gatewayBase    string
 	initialState   *presence
 	chunkMembers   bool
+	autoSync       bool
+	recoverPanics  bool
+	envToken       bool
+	intentsSet     bool
 	dms            sync.Map // user ID -> DM channel ID
 	autoDefer      time.Duration
 	requestTimeout time.Duration
@@ -92,7 +96,9 @@ type Option func(*Client)
 
 // WithIntents sets which families of events the gateway should send. Without
 // it the bot receives only events that need no intent, such as interactions.
-func WithIntents(i Intent) Option { return func(c *Client) { c.intents = i } }
+func WithIntents(i Intent) Option {
+	return func(c *Client) { c.intents, c.intentsSet = i, true }
+}
 
 // WithLogger replaces the default logger. Pass one writing to io.Discard to
 // silence starlings entirely.
@@ -198,12 +204,21 @@ func WithStatus(status Status, activity Activity) Option {
 	}
 }
 
-// New builds a client from a bot token. The "Bot " prefix Discord expects is
-// added if it is not already there - a missing space there is a classic cause
-// of 401s, so starlings normalises it for you.
+// New builds a client:
 //
-// New does no I/O. Register handlers, then call Run.
-func New(token string, opts ...Option) *Client {
+//	bot := starlings.New()
+//	bot.Slash("ping", "Is the bot alive?", ping)
+//	bot.Run()
+//
+// The token comes from WithToken, or else from DISCORD_TOKEN in the
+// environment or a .env file in the working directory. Register handlers,
+// then call Run.
+//
+// Some behaviour is automatic: intents are chosen from the handlers, slow
+// interaction handlers are deferred, and handler panics are logged instead of
+// stopping the process. Each has its own option to turn it off, and Explicit
+// turns them all off.
+func New(opts ...Option) *Client {
 	c := &Client{
 		id:             botIdentity,
 		log:            slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})),
@@ -213,6 +228,9 @@ func New(token string, opts ...Option) *Client {
 		autoShards:     true,
 		autoDefer:      defaultAutoDefer,
 		requestTimeout: time.Minute,
+		recoverPanics:  true,
+		autoSync:       true,
+		envToken:       true,
 	}
 	c.rest = newREST(c)
 
@@ -234,27 +252,18 @@ func New(token string, opts ...Option) *Client {
 		}
 	}
 
-	c.token = normalizeToken(token)
+	if c.token == "" && c.envToken {
+		loadDotEnv(".env")
+		if token := os.Getenv("DISCORD_TOKEN"); token != "" {
+			c.token = normalizeToken(token)
+		}
+	}
 	c.installStateHandlers()
 	if c.chunkMembers {
 		c.installMemberChunking()
 	}
 	if c.syncGuild != nil {
-		guildID := *c.syncGuild
-		internalOn(c, func(ready *Ready) {
-			if ready.Client().ApplicationID().IsZero() {
-				return
-			}
-			c.syncOnce.Do(func() {
-				go func() {
-					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-					defer cancel()
-					if err := ready.Client().SyncCommands(ctx, guildID); err != nil {
-						c.log.Error("starlings: syncing application commands", "err", err)
-					}
-				}()
-			})
-		})
+		c.installCommandSync()
 	}
 	return c
 }
@@ -263,12 +272,49 @@ func New(token string, opts ...Option) *Client {
 // It is New with the guild-message, direct-message, and message-content
 // intents selected and resource caching disabled. Options are applied
 // afterward, so WithIntents and WithStateCache can replace either preset.
-func NewCommandBot(token string, opts ...Option) *Client {
+func NewCommandBot(opts ...Option) *Client {
 	defaults := []Option{
 		WithIntents(IntentGuildMessages | IntentDirectMessages | IntentMessageContent),
 		WithStateCache(MinimalStateConfig()),
 	}
-	return New(token, append(defaults, opts...)...)
+	return New(append(defaults, opts...)...)
+}
+
+// WithToken sets the bot token. The "Bot " prefix Discord expects is added if
+// it is missing; a missing space there is a classic cause of 401s. Without
+// WithToken, New reads DISCORD_TOKEN.
+func WithToken(token string) Option {
+	return func(c *Client) { c.token = normalizeToken(token) }
+}
+
+// WithPanicRecovery controls what happens when an event or command handler
+// panics. With recovery on, the default, the panic is logged with its stack
+// and the bot keeps running. Off, the panic stops the process, as it would in
+// plain Go.
+func WithPanicRecovery(enabled bool) Option {
+	return func(c *Client) { c.recoverPanics = enabled }
+}
+
+// Explicit turns off everything Starlings does on its own, so the client
+// does only what you configure, the way DiscordGo behaves:
+//
+//   - no token from DISCORD_TOKEN or .env; use WithToken
+//   - no intents chosen from handlers; use WithIntents (none means zero)
+//   - no automatic deferral of slow interaction handlers
+//   - no automatic command publishing
+//   - no recovery from handler panics
+//
+// Options after Explicit can turn single behaviours back on:
+//
+//	starlings.New(starlings.Explicit(), starlings.WithToken(t), starlings.WithAutoDefer(2*time.Second))
+func Explicit() Option {
+	return func(c *Client) {
+		c.envToken = false
+		c.intentsSet = true
+		c.autoDefer = 0
+		c.autoSync = false
+		c.recoverPanics = false
+	}
 }
 
 // normalizeToken accepts a raw token, "Bot <token>", or the "Bot<token>" form
@@ -310,6 +356,9 @@ func (c *Client) Run() error {
 // would fail identically forever.
 func (c *Client) RunContext(ctx context.Context) error {
 	defer c.stopTasks()
+	if err := c.prepareRun(); err != nil {
+		return err
+	}
 	if c.starlog != nil {
 		c.starlog.Attach(c)
 		c.starlog.Start(ctx)

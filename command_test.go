@@ -68,7 +68,7 @@ func TestCommandIgnoresBotsAndNonCommands(t *testing.T) {
 }
 
 func TestCommandCustomPrefix(t *testing.T) {
-	c := New("token", WithLogger(discardLogger()), WithPrefix("?"))
+	c := New(WithToken("token"), WithLogger(discardLogger()), WithPrefix("?"))
 	called := 0
 	c.Command("hi", func(*MessageCreate, []string) { called++ })
 
@@ -108,7 +108,7 @@ func TestCommandsShareOneHandler(t *testing.T) {
 }
 
 func TestCommandAliasesAreSortedAndCommandPresetHasIntents(t *testing.T) {
-	c := NewCommandBot("token", WithLogger(discardLogger()))
+	c := NewCommandBot(WithToken("token"), WithLogger(discardLogger()))
 	called := 0
 	c.Command("zeta", func(*MessageCreate, []string) { called++ }).Aliases("Z", "alpha")
 	deliver(t, c, frameWithContent("!z", false))
@@ -129,7 +129,7 @@ func TestCommandAliasesAreSortedAndCommandPresetHasIntents(t *testing.T) {
 
 func TestIntentWarnings(t *testing.T) {
 	t.Run("missing event intent", func(t *testing.T) {
-		c := New("token", WithLogger(discardLogger())) // no intents at all
+		c := New(WithToken("token"), WithLogger(discardLogger())) // no intents at all
 		On(c, func(*MessageCreate) {})
 
 		warnings := strings.Join(c.intentWarnings(), "\n")
@@ -142,7 +142,7 @@ func TestIntentWarnings(t *testing.T) {
 	})
 
 	t.Run("missing message content", func(t *testing.T) {
-		c := New("token", WithLogger(discardLogger()), WithIntents(IntentGuildMessages))
+		c := New(WithToken("token"), WithLogger(discardLogger()), WithIntents(IntentGuildMessages))
 		On(c, func(*MessageCreate) {})
 
 		warnings := strings.Join(c.intentWarnings(), "\n")
@@ -155,7 +155,7 @@ func TestIntentWarnings(t *testing.T) {
 	})
 
 	t.Run("correctly configured", func(t *testing.T) {
-		c := New("token", WithLogger(discardLogger()),
+		c := New(WithToken("token"), WithLogger(discardLogger()),
 			WithIntents(IntentGuildMessages|IntentMessageContent))
 		On(c, func(*MessageCreate) {})
 
@@ -165,7 +165,7 @@ func TestIntentWarnings(t *testing.T) {
 	})
 
 	t.Run("events needing no intent", func(t *testing.T) {
-		c := New("token", WithLogger(discardLogger()))
+		c := New(WithToken("token"), WithLogger(discardLogger()))
 		On(c, func(*Ready) {})
 		On(c, func(*InteractionCreate) {})
 

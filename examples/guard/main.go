@@ -58,7 +58,7 @@ func main() {
 	target.Roles = []starlings.Snowflake{2}
 	members[len(members)-1] = target
 
-	bot := starlings.New("offline-demo-token",
+	bot := starlings.New(starlings.WithToken("offline-demo-token"),
 		starlings.WithStateMode(starlings.StateManual),
 		starlings.WithGuard(),
 		starlings.WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),

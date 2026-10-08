@@ -15,7 +15,7 @@ import (
 )
 
 func TestConnectValidatesIDsAndReadiness(t *testing.T) {
-	c := starlings.New("token")
+	c := starlings.New(starlings.WithToken("token"))
 	if _, err := Connect(context.Background(), c, 0, 2); err == nil {
 		t.Fatal("Connect accepted an empty guild ID")
 	}

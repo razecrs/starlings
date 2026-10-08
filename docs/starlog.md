@@ -13,7 +13,7 @@ logs := starlings.NewStarlog("my bot",
 		starlings.NewStarPet(starlings.StarPetComet),
 	))
 
-bot := starlings.New(token, starlings.WithStarlog(logs))
+bot := starlings.New(starlings.WithToken(token), starlings.WithStarlog(logs))
 ```
 
 The media strip and the pixel-art pets come from two optional packages, so

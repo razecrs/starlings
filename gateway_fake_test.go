@@ -66,7 +66,7 @@ func newFakeGateway(t *testing.T, on func(conn *websocket.Conn, frame fakeFrame)
 // client returns an uncompressed single-shard client pointed at the fake.
 func (g *fakeGateway) client(opts ...Option) *Client {
 	base := []Option{WithShard(0, 1), WithGatewayCompression(false), WithLogger(discardLogger())}
-	c := New("Bot token", append(base, opts...)...)
+	c := New(append(append([]Option{WithToken("Bot token")}, base...), opts...)...)
 	c.gatewayBase = "ws" + strings.TrimPrefix(g.server.URL, "http")
 	return c
 }

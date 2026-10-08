@@ -76,7 +76,7 @@ func TestModernMessageAndInteractionModels(t *testing.T) {
 }
 
 func TestVoiceChannelMetadataEventsUpdateState(t *testing.T) {
-	c := New("test")
+	c := New(WithToken("test"))
 	c.dispatch("CHANNEL_CREATE", []byte(`{"id":"20","guild_id":"10","name":"voice","type":2}`))
 	c.dispatch("CHANNEL_INFO", []byte(`{"guild_id":"10","channels":[{"id":"20","status":"gaming","voice_start_time":100}]}`))
 	channel, ok := c.State.Channel(20)
@@ -96,7 +96,7 @@ func TestVoiceChannelMetadataEventsUpdateState(t *testing.T) {
 }
 
 func TestHandlerLifecycleRawAndSubscriptions(t *testing.T) {
-	c := New("test")
+	c := New(WithToken("test"))
 	var normal, once, raw, subscriptions, presenceSnapshots atomic.Int32
 	off := c.Listen(func(*MessageCreate) { normal.Add(1) })
 	Once(c, func(*MessageCreate) { once.Add(1) })
@@ -178,7 +178,7 @@ func TestRESTRateLimitLifecycleEvent(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := New("test")
+	c := New(WithToken("test"))
 	var event atomic.Int32
 	c.On(func(e *RateLimit) {
 		if e.Global && e.Wait() == time.Millisecond {
@@ -212,7 +212,7 @@ func TestRawRESTEscapeHatch(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c := New("test")
+	c := New(WithToken("test"))
 	out, err := c.RequestRaw(context.Background(), RESTRequest{
 		Method:      http.MethodPost,
 		Base:        server.URL,

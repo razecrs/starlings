@@ -234,6 +234,12 @@ func invokeApplicationHandler[E Event](c *Client, name string, handler func(*E),
 	}
 	defer func() {
 		var err error
+		if !c.recoverPanics {
+			if c.guard != nil {
+				c.guard.observe("handler."+name, GuardApplication, time.Since(started), nil)
+			}
+			return
+		}
 		if v := recover(); v != nil {
 			err = fmt.Errorf("panic: %v", v)
 			c.log.Error("starlings: event handler panicked", "event", name, "panic", v, "stack", string(debug.Stack()))

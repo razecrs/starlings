@@ -81,7 +81,7 @@ func bigGuildCreate(members, channels, roles int) []byte {
 // BenchmarkGuildCreateSkipped is the case that justifies the frame parser:
 // a large payload arriving at a bot with no handler for it.
 func BenchmarkGuildCreateSkipped(b *testing.B) {
-	c := New("token", WithLogger(discardLogger()), WithStateCache(StateConfig{}))
+	c := New(WithToken("token"), WithLogger(discardLogger()), WithStateCache(StateConfig{}))
 	var g gateway
 	frame := bigGuildCreate(500, 40, 25)
 	ctx := context.Background()
@@ -98,7 +98,7 @@ func BenchmarkGuildCreateSkipped(b *testing.B) {
 // BenchmarkGuildCreateDispatched is the same payload fully decoded, for
 // comparison. The gap between the two is what a bot saves per unhandled event.
 func BenchmarkGuildCreateDispatched(b *testing.B) {
-	c := New("token", WithLogger(discardLogger()), WithStateCache(StateConfig{}))
+	c := New(WithToken("token"), WithLogger(discardLogger()), WithStateCache(StateConfig{}))
 	On(c, func(*GuildCreate) {})
 	var g gateway
 	frame := bigGuildCreate(500, 40, 25)
@@ -118,7 +118,7 @@ func BenchmarkGuildCreateDispatched(b *testing.B) {
 // not the dispatch case - if it does not, the lookup is on the wrong side of
 // the decode.
 func BenchmarkGuildCreateWrongHandler(b *testing.B) {
-	c := New("token", WithLogger(discardLogger()), WithStateCache(StateConfig{}))
+	c := New(WithToken("token"), WithLogger(discardLogger()), WithStateCache(StateConfig{}))
 	On(c, func(*MessageCreate) {})
 	On(c, func(*InteractionCreate) {})
 	var g gateway

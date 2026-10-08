@@ -209,7 +209,7 @@ func TestStarlogNonTerminalFallbackAndShardStatus(t *testing.T) {
 		t.Fatal("buffer output should not activate the fullscreen TUI")
 	}
 
-	c := New("token", WithStarlog(log))
+	c := New(WithToken("token"), WithStarlog(log))
 	c.gw.connected.Store(true)
 	c.gw.latency.Store(int64(42 * time.Millisecond))
 	c.seq.Store(9)

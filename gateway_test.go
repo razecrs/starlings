@@ -6,7 +6,7 @@ import (
 )
 
 func testClient() *Client {
-	c := New("token", WithLogger(discardLogger()))
+	c := New(WithToken("token"), WithLogger(discardLogger()))
 	return c
 }
 

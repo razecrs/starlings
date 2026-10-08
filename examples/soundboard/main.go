@@ -74,7 +74,7 @@ func main() {
 
 	// GuildVoiceStates is what makes VOICE_STATE_UPDATE arrive; without it the
 	// bot can never tell where anyone is. It is not privileged.
-	bot := starlings.New(token,
+	bot := starlings.New(starlings.WithToken(token),
 		starlings.WithIntents(starlings.IntentGuilds|starlings.IntentGuildVoiceStates),
 		starlings.WithStatus(starlings.StatusOnline, starlings.Listening("/soundboard")),
 	)

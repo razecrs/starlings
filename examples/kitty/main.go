@@ -40,7 +40,7 @@ func main() {
 		log.Fatal("set DISCORD_TOKEN or add it to .env")
 	}
 
-	bot := starlings.New(token,
+	bot := starlings.New(starlings.WithToken(token),
 		starlings.WithIntents(starlings.IntentGuilds),
 		starlings.WithStatus(starlings.StatusOnline, starlings.Listening("starlings tests")),
 	)

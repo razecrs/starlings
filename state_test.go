@@ -82,7 +82,7 @@ func TestStateUnavailableGuildIsRetained(t *testing.T) {
 }
 
 func TestClientStateUpdatesBeforeUserHandler(t *testing.T) {
-	c := New("token", WithLogger(discardLogger()))
+	c := New(WithToken("token"), WithLogger(discardLogger()))
 	seen := false
 	On(c, func(e *ChannelCreate) {
 		ch, ok := c.State.Channel(e.ID)

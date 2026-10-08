@@ -24,7 +24,7 @@ import (
 )
 
 func main() {
-	bot := starlings.NewCommandBot(os.Getenv("DISCORD_TOKEN"))
+	bot := starlings.NewCommandBot()
 
 	bot.Command("ping", func(m *starlings.MessageCreate, _ []string) {
 		if _, err := m.Reply("pong"); err != nil {

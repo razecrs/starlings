@@ -136,7 +136,7 @@ func TestStatePermissionOrderAndColor(t *testing.T) {
 }
 
 func TestManualStateUsesTheSameApplyPath(t *testing.T) {
-	c := New("token", WithLogger(discardLogger()), WithStateMode(StateManual), WithGuard())
+	c := New(WithToken("token"), WithLogger(discardLogger()), WithStateMode(StateManual), WithGuard())
 	guard := c.Guard()
 	seen := false
 	On(c, func(event *ChannelCreate) {
@@ -171,7 +171,7 @@ func TestStateConfigAvoidsUnusedEventDecoding(t *testing.T) {
 	config := DefaultStateConfig()
 	config.Presences = false
 	config.Users = false
-	c := New("token", WithLogger(discardLogger()), WithStateCache(config))
+	c := New(WithToken("token"), WithLogger(discardLogger()), WithStateCache(config))
 	if slot := c.slotFor("PRESENCE_UPDATE"); slot != nil {
 		t.Fatalf("disabled presence cache installed a handler: %#v", slot)
 	}

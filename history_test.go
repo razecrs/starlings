@@ -19,7 +19,7 @@ func clientServedBy(handler http.Handler, opts ...Option) *Client {
 		return recorder.Result(), nil
 	})
 	base := []Option{WithHTTPClient(&http.Client{Transport: transport}), WithLogger(discardLogger())}
-	return New("token", append(base, opts...)...)
+	return New(append(append([]Option{WithToken("token")}, base...), opts...)...)
 }
 
 func TestMessageHistoryPagesUntilShortPage(t *testing.T) {
@@ -75,7 +75,7 @@ func TestMessageHistoryStopsWhenLoopBreaks(t *testing.T) {
 }
 
 func TestDownloadAttachmentRejectsNonCDNHosts(t *testing.T) {
-	c := New("token")
+	c := New(WithToken("token"))
 	for _, raw := range []string{
 		"http://cdn.discordapp.com/a.png",
 		"https://169.254.169.254/latest/meta-data",

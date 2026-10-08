@@ -25,7 +25,7 @@ func main() {
 
 	// NewCommandBot selects the intents prefix commands need. MessageContent
 	// must still be enabled in the developer portal.
-	bot := starlings.NewCommandBot(token,
+	bot := starlings.NewCommandBot(starlings.WithToken(token),
 		starlings.WithStatus(starlings.StatusOnline, starlings.Playing("with starlings")),
 	)
 

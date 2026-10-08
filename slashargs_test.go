@@ -17,8 +17,8 @@ type banArgs struct {
 }
 
 func TestSlashArgsBuildsDiscordSchema(t *testing.T) {
-	c := New("token")
-	Slash(c, "ban", "Ban a member", func(*InteractionCreate, banArgs) error { return nil })
+	c := New(WithToken("token"))
+	c.Slash("ban", "Ban a member", func(*InteractionCreate, banArgs) error { return nil })
 	defs := c.SlashDefinitions()
 	if len(defs) != 1 {
 		t.Fatalf("definitions = %d", len(defs))
@@ -53,8 +53,8 @@ func TestSlashArgsPutsRequiredOptionsFirst(t *testing.T) {
 		Note string `optional:""`
 		User *User
 	}
-	c := New("token")
-	Slash(c, "note", "Add a note", func(*InteractionCreate, args) error { return nil })
+	c := New(WithToken("token"))
+	c.Slash("note", "Add a note", func(*InteractionCreate, args) error { return nil })
 	opts := c.SlashDefinitions()[0].Options
 	if opts[0].Name != "user" || opts[1].Name != "note" {
 		t.Fatalf("Discord requires required options first, got %s then %s", opts[0].Name, opts[1].Name)
@@ -64,20 +64,20 @@ func TestSlashArgsPutsRequiredOptionsFirst(t *testing.T) {
 func TestSlashArgsRejectsInvalidDefinitions(t *testing.T) {
 	cases := map[string]func(c *Client){
 		"uppercase command": func(c *Client) {
-			Slash(c, "Ban", "x", func(*InteractionCreate, struct{}) error { return nil })
+			c.Slash("Ban", "x", func(*InteractionCreate, struct{}) error { return nil })
 		},
 		"empty description": func(c *Client) {
-			Slash(c, "ban", "", func(*InteractionCreate, struct{}) error { return nil })
+			c.Slash("ban", "", func(*InteractionCreate, struct{}) error { return nil })
 		},
 		"unsupported field": func(c *Client) {
 			type args struct{ M map[string]int }
-			Slash(c, "ban", "x", func(*InteractionCreate, args) error { return nil })
+			c.Slash("ban", "x", func(*InteractionCreate, args) error { return nil })
 		},
 		"bad choice": func(c *Client) {
 			type args struct {
 				N int `choices:"One=uno"`
 			}
-			Slash(c, "ban", "x", func(*InteractionCreate, args) error { return nil })
+			c.Slash("ban", "x", func(*InteractionCreate, args) error { return nil })
 		},
 	}
 	for name, register := range cases {
@@ -87,7 +87,7 @@ func TestSlashArgsRejectsInvalidDefinitions(t *testing.T) {
 					t.Fatal("invalid definition was accepted")
 				}
 			}()
-			register(New("token"))
+			register(New(WithToken("token")))
 		})
 	}
 }
@@ -107,7 +107,7 @@ func argsInteraction(c *Client, name, options, resolved string) *InteractionCrea
 func TestSlashArgsDecodesValues(t *testing.T) {
 	c, _ := autoDeferClient(t, 0)
 	got := make(chan banArgs, 1)
-	Slash(c, "ban", "Ban a member", func(_ *InteractionCreate, a banArgs) error {
+	c.Slash("ban", "Ban a member", func(_ *InteractionCreate, a banArgs) error {
 		got <- a
 		return nil
 	})
@@ -123,7 +123,7 @@ func TestSlashArgsDecodesValues(t *testing.T) {
 func TestSlashArgsExplainsNonMemberTarget(t *testing.T) {
 	c, log := autoDeferClient(t, 0)
 	called := false
-	Slash(c, "ban", "Ban a member", func(*InteractionCreate, banArgs) error {
+	c.Slash("ban", "Ban a member", func(*InteractionCreate, banArgs) error {
 		called = true
 		return nil
 	})

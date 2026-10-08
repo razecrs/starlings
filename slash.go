@@ -53,13 +53,28 @@ type SlashRoute struct {
 // This only registers it in the program. Call SyncCommands once connected to
 // publish the definitions to Discord, which is what makes them appear in the
 // client.
-func (c *Client) Slash(name, description string, fn SlashFunc, options ...CommandOption) *SlashRoute {
-	return c.SlashCommand(ApplicationCommand{
-		Type:        CommandChat,
-		Name:        name,
-		Description: description,
-		Options:     options,
-	}, fn)
+//
+// The handler can take any of the shapes described on Response: for example
+// func() string, or func(*InteractionCreate, Args) (string, error), where the
+// fields of Args become the command's options.
+func (c *Client) Slash(name, description string, handler any, options ...CommandOption) *SlashRoute {
+	def := ApplicationCommand{Type: CommandChat, Name: name, Description: description, Options: options}
+	switch fn := handler.(type) {
+	case nil:
+		return c.SlashCommand(def, nil)
+	case SlashFunc:
+		return c.SlashCommand(def, fn)
+	case func(*InteractionCreate):
+		return c.SlashCommand(def, fn)
+	}
+	h := adaptHandler("/"+name, handler, argsFromOptions, description)
+	if h.plan != nil {
+		if len(options) > 0 {
+			panic("starlings: /" + name + ": options come from the handler's struct; do not pass them as well")
+		}
+		def.Options = h.options
+	}
+	return c.SlashCommand(def, nil).Run(h.call)
 }
 
 // SlashCommand is Slash with a fully specified command, for the cases the
@@ -283,11 +298,30 @@ func (c *Client) SyncCommands(ctx context.Context, guildID Snowflake) error {
 		return nil
 	}
 
+	// Publishing replaces every command at once and is rate limited, so it
+	// is skipped when Discord already has these exact definitions.
+	var current []ApplicationCommand
 	var err error
+	if guildID.IsZero() {
+		current, err = c.ApplicationCommands(ctx, appID)
+	} else {
+		current, err = c.GuildCommands(ctx, appID, guildID)
+	}
+	if err == nil && commandsMatch(defs, current) {
+		c.log.Debug("starlings: commands already up to date", "count", len(defs))
+		return nil
+	}
 	if guildID.IsZero() {
 		_, err = c.SetApplicationCommands(ctx, appID, defs)
 	} else {
 		_, err = c.SetGuildCommands(ctx, appID, guildID, defs)
+	}
+	if err == nil {
+		scope := "every guild"
+		if !guildID.IsZero() {
+			scope = "guild " + guildID.String()
+		}
+		c.log.Info("starlings: published commands", "count", len(defs), "to", scope)
 	}
 	return err
 }

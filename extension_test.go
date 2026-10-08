@@ -13,7 +13,7 @@ type closingExtension struct{ closed bool }
 func (e *closingExtension) Close(context.Context) { e.closed = true }
 
 func TestExtensionCreatesOnceAndClosesWithClient(t *testing.T) {
-	c := New("token")
+	c := New(WithToken("token"))
 	calls := 0
 	create := func() (any, error) {
 		calls++
@@ -34,7 +34,7 @@ func TestExtensionCreatesOnceAndClosesWithClient(t *testing.T) {
 }
 
 func TestExtensionRetriesAfterCreateError(t *testing.T) {
-	c := New("token")
+	c := New(WithToken("token"))
 	failure := errors.New("not yet")
 	if _, err := c.Extension(extensionTestKey{}, func() (any, error) { return nil, failure }); !errors.Is(err, failure) {
 		t.Fatalf("create error = %v, want %v", err, failure)
@@ -46,7 +46,7 @@ func TestExtensionRetriesAfterCreateError(t *testing.T) {
 }
 
 func TestOnOrderedRunsBeforeApplicationHandlersWithAsyncEvents(t *testing.T) {
-	c := New("token", WithAsyncEvents(true))
+	c := New(WithToken("token"), WithAsyncEvents(true))
 	On(c, func(*VoiceStateUpdate) {})
 	before := 0
 	if slot := c.slotFor("VOICE_STATE_UPDATE"); slot != nil {

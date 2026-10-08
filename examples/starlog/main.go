@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log/slog"
-	"os"
 	"os/exec"
 
 	"github.com/razecrs/starlings"
@@ -20,7 +19,7 @@ func main() {
 			starlings.NewStarPet(starlings.StarPetComet),
 			starlings.NewStarPet(starlings.StarPetNebula),
 		))
-	bot := starlings.New(os.Getenv("DISCORD_TOKEN"),
+	bot := starlings.New(
 		starlings.WithStarlog(logs))
 
 	bot.On(func(ready *starlings.Ready) {

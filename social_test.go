@@ -74,7 +74,7 @@ func TestSocialAuthenticationAndPayloads(t *testing.T) {
 		}, nil
 	})
 
-	c := New("bot-token", WithHTTPClient(&http.Client{Transport: transport}), WithLogger(discardLogger()))
+	c := New(WithToken("bot-token"), WithHTTPClient(&http.Client{Transport: transport}), WithLogger(discardLogger()))
 	ctx := context.Background()
 	lobby, err := c.CreateLobby(ctx, LobbyCreate{Metadata: map[string]string{"mode": "ranked"}})
 	if err != nil || lobby.ID != 10 {

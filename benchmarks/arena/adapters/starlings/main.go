@@ -256,7 +256,7 @@ func (a *adapter) workload(name string) (func(int) (uint64, uint64, error), stri
 }
 
 func newClient() *starlings.Client {
-	return starlings.New("offline",
+	return starlings.New(starlings.WithToken("offline"),
 		starlings.WithAsyncEvents(false),
 		starlings.WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
 	)

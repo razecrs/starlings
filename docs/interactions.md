@@ -24,7 +24,7 @@ bot.On(func(*starlings.Ready) {
 Small bots can replace the Ready handler with an explicit startup option:
 
 ```go
-bot := starlings.New(token, starlings.WithCommandSync(developmentGuildID))
+bot := starlings.New(starlings.WithToken(token), starlings.WithCommandSync(developmentGuildID))
 ```
 
 This syncs once after READY. Omit the option when deployment code should own

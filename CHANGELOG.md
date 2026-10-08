@@ -2,8 +2,21 @@
 
 ## v0.1.2 (unreleased)
 
-This release makes optional features cost nothing for bots that do not use
-them.
+A bot can now be this short:
+
+```go
+func main() {
+	bot := starlings.New()
+	bot.Slash("ping", "Is the bot alive?", ping)
+	log.Fatal(bot.Run())
+}
+
+func ping() string {
+	return "Pong!"
+}
+```
+
+Optional features also cost nothing for bots that do not use them.
 
 ### Smaller by default
 
@@ -24,6 +37,8 @@ them.
 
 | v0.1.1 | v0.1.2 |
 | --- | --- |
+| `starlings.New(token, opts...)` | `starlings.New(opts...)`, with `starlings.WithToken(token)` or `DISCORD_TOKEN` |
+| `starlings.NewCommandBot(token, opts...)` | `starlings.NewCommandBot(opts...)` |
 | `bot.ConnectVoice(ctx, guild, channel)` | `voice.Connect(ctx, bot, guild, channel)` |
 | `starlings.VoiceConnection` | `voice.Connection` |
 | `starlings.OpusProvider`, `OpusPacket` | `voice.OpusProvider`, `voice.OpusPacket` |
@@ -83,10 +98,31 @@ user.Send("a direct message")
 
 ### Shorter commands
 
-- `starlings.Slash(bot, name, description, fn)` takes a handler of the form
-  `func(*InteractionCreate, Args) error`. The command's options come from the
-  fields of `Args` and their tags, and the handler receives decoded values.
-  The definition is checked against Discord's rules when it is registered.
+- `New` reads the token from `DISCORD_TOKEN`, or from a `.env` file, when
+  `WithToken` is not given. `Run` returns `ErrNoToken` if there is none.
+- A handler passed to `Slash`, `Button`, or `Modal` asks only for what it
+  uses and returns what to send. It can take the `*InteractionCreate`, a
+  struct, or both, and return a string, `*Embed`, `Response`, `error`, or a
+  value with an error. `Ephemeral`, `Reply`, and `Update` choose how a result
+  is sent. The handler's shape is checked when it is registered.
+- A struct parameter is filled from the command's options (which it also
+  defines, with tags for descriptions, limits, and choices), from a button
+  route's `{parameters}`, or from a modal's text inputs. Values a user could
+  have tampered with are validated before the handler runs.
+- `Client.Button` and `Client.Modal` register buttons and modals with these
+  handlers.
+- When no intents are set, `Run` chooses them from the registered handlers
+  and logs any privileged intents that must be enabled in the developer
+  portal. `WithIntents` keeps full control.
+- `Run` publishes registered slash commands after connecting, but only when
+  they differ from what Discord already has; `SyncCommands` also skips
+  identical definitions. `DISCORD_GUILD_ID` publishes to one server, where
+  changes appear at once. `WithAutoSync(false)` turns this off.
+- `Explicit` turns off everything automatic: the token from the environment,
+  inferred intents, automatic deferral, command publishing, and panic
+  recovery. Options after it can turn single behaviours back on.
+  `WithPanicRecovery(false)` turns off only panic recovery.
+- With Guard, each command, button, and modal is measured separately.
 - `SlashRoute.Run` sets an error-returning handler. A `*UserError` (see
   `UserErrorf`) or a `*ModerationError` is shown privately to the user. Any
   other error, or a panic, is logged and the user sees a generic message, so

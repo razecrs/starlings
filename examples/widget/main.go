@@ -50,7 +50,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	bot := starlings.New(token)
+	bot := starlings.New(starlings.WithToken(token))
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 

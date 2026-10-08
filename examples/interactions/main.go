@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	bot := starlings.New(os.Getenv("DISCORD_TOKEN"))
+	bot := starlings.New()
 	bot.Slash("ping", "Check the bot is alive", func(i *starlings.InteractionCreate) {
 		if err := i.Reply("pong"); err != nil {
 			log.Print(err)

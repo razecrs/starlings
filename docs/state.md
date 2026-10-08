@@ -44,7 +44,7 @@ state.Presences = false
 state.ThreadMembers = false
 state.MaxMessagesPerChannel = 25 // zero disables messages
 
-bot := starlings.New(token, starlings.WithStateCache(state))
+bot := starlings.New(starlings.WithToken(token), starlings.WithStateCache(state))
 ```
 
 Disabled categories do not retain objects. When an event is not needed by
@@ -62,7 +62,7 @@ highest coloured role.
 Manual mode stops Starlings from applying resource events automatically:
 
 ```go
-bot := starlings.New(token, starlings.WithStateMode(starlings.StateManual))
+bot := starlings.New(starlings.WithToken(token), starlings.WithStateMode(starlings.StateManual))
 
 bot.On(func(event *starlings.ChannelUpdate) {
 	// inspect or persist the raw update first, if needed
@@ -83,7 +83,7 @@ ignored by a generic event pipeline.
 Enable Guard beside manual mode:
 
 ```go
-bot := starlings.New(token,
+bot := starlings.New(starlings.WithToken(token),
 	starlings.WithStateMode(starlings.StateManual),
 	starlings.WithGuard())
 ```

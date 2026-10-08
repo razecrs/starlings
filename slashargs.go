@@ -12,53 +12,6 @@ import (
 	"unicode/utf8"
 )
 
-// Slash registers a slash command whose options are the fields of T. The
-// handler receives the decoded values, so it never reads options by name:
-//
-//	type banArgs struct {
-//		User   *starlings.Member  `desc:"Who to ban"`
-//		Reason string             `desc:"Why" max:"400"`
-//		Delete time.Duration      `desc:"Delete their recent messages" optional:"" choices:"None=0s|Last hour=1h|Last day=24h"`
-//	}
-//
-//	starlings.Slash(bot, "ban", "Ban a member", func(i *starlings.InteractionCreate, a banArgs) error {
-//		...
-//	}).Require(starlings.PermissionBanMembers)
-//
-// Fields are required unless tagged optional. Field tags:
-//
-//	name         option name; default is the field name in snake_case
-//	desc         option description shown in Discord (required by Discord)
-//	optional     the option may be left out; the field keeps its zero value
-//	min, max     number range, or text length for strings
-//	choices      fixed choices as "Label=value|Label=value"
-//	channel      channel kinds: text, voice, category, announcement, stage,
-//	             forum, media, thread
-//	autocomplete the option uses the route's Autocomplete handler
-//
-// Field types: string, bool, every int and float kind, time.Duration (typed
-// as text such as 10m, 2h or 3d), Snowflake (any mentionable), *User,
-// *Member, *Role, *Channel, and *Attachment. A *Member field is a user option
-// whose user must be in the server; otherwise the handler is not called and
-// the user is told why.
-//
-// The command is validated when it is registered. A definition Discord would
-// reject panics at startup instead of failing when commands are synced.
-// Errors returned by fn are reported as described on UserError.
-func Slash[T any](c *Client, name, description string, fn func(*InteractionCreate, T) error) *SlashRoute {
-	if fn == nil {
-		panic("starlings: nil handler for /" + name)
-	}
-	plan := planArgs[T](name, description)
-	return c.Slash(name, description, nil, plan.options()...).Run(func(i *InteractionCreate) error {
-		var args T
-		if err := plan.decode(i, reflect.ValueOf(&args).Elem()); err != nil {
-			return err
-		}
-		return fn(i, args)
-	})
-}
-
 type argKind uint8
 
 const (
@@ -93,16 +46,15 @@ var (
 	durationType       = reflect.TypeFor[time.Duration]()
 )
 
-func planArgs[T any](command, description string) argPlan {
+func planArgsOf(t reflect.Type, command, description string) argPlan {
 	fail := func(format string, args ...any) {
-		panic(fmt.Sprintf("starlings: /%s: ", command) + fmt.Sprintf(format, args...))
+		panic(fmt.Sprintf("starlings: %s: ", command) + fmt.Sprintf(format, args...))
 	}
-	checkName(command, fail)
+	checkName(strings.TrimPrefix(command, "/"), fail)
 	if n := utf8.RuneCountInString(description); n < 1 || n > 100 {
 		fail("description must be 1-100 characters, got %d", n)
 	}
 
-	t := reflect.TypeFor[T]()
 	if t.Kind() != reflect.Struct {
 		fail("arguments must be a struct, got %s", t)
 	}
