@@ -20,6 +20,8 @@ type User struct {
 	Flags         int       `json:"flags"`
 	PremiumType   int       `json:"premium_type"`
 	PublicFlags   int       `json:"public_flags"`
+
+	ref bound `json:"-"` // the client this value came from
 }
 
 // Tag returns the name to show for a user: the global display name if they have
@@ -67,6 +69,8 @@ type Member struct {
 	Pending                    bool        `json:"pending"`
 	Permissions                Permissions `json:"permissions,string"`
 	CommunicationDisabledUntil *time.Time  `json:"communication_disabled_until"`
+
+	ref bound `json:"-"` // the client this value came from
 }
 
 // DisplayName returns the nickname if the member has one, otherwise the
@@ -110,6 +114,8 @@ type Role struct {
 	Permissions Permissions `json:"permissions,string"`
 	Managed     bool        `json:"managed"` // created by an integration, not editable
 	Mentionable bool        `json:"mentionable"`
+
+	ref bound `json:"-"` // the client this value came from
 }
 
 // Mention returns the <@&id> form that renders as a role ping.

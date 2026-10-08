@@ -400,6 +400,7 @@ func (r *rest) attemptPrepared(ctx context.Context, req request, body preparedBo
 		}
 		return 0, fmt.Errorf("starlings: decoding %s %s: %w", req.Method, safeRequestPath(req.Path), err)
 	}
+	bindResult(r.c, out, guildFromPath(req.Path))
 	return 0, nil
 }
 

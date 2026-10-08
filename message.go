@@ -86,6 +86,8 @@ type Message struct {
 	Stickers             []Sticker                   `json:"stickers"` // legacy full sticker objects
 	PurchaseNotification *PurchaseNotification       `json:"purchase_notification"`
 	LobbyMember          *MessageLobbyMember         `json:"lobby_member"`
+
+	ref bound `json:"-"` // the client this value came from
 }
 
 // MessageFlags is a bitmask of per-message options.

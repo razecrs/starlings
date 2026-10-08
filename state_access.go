@@ -99,7 +99,9 @@ func (s *State) guildLocked(id Snowflake) (Guild, bool) {
 		}
 		sort.Slice(v.Presences, func(i, j int) bool { return v.Presences[i].User.ID < v.Presences[j].User.ID })
 	}
-	return cloneGuild(v), true
+	out := cloneGuild(v)
+	out.bindTo(s.client)
+	return out, true
 }
 
 func (s *State) Channel(id Snowflake) (value Channel, ok bool) {
@@ -110,7 +112,9 @@ func (s *State) Channel(id Snowflake) (value Channel, ok bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	value, ok = s.channels[id]
-	return cloneChannel(value), ok
+	value = cloneChannel(value)
+	value.bindTo(s.client)
+	return value, ok
 }
 
 func (s *State) Member(guildID, userID Snowflake) (value Member, ok bool) {
@@ -121,7 +125,9 @@ func (s *State) Member(guildID, userID Snowflake) (value Member, ok bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	value, ok = s.members[guildID][userID]
-	return cloneMember(value), ok
+	value = cloneMember(value)
+	value.bindTo(s.client, guildID)
+	return value, ok
 }
 
 func (s *State) User(id Snowflake) (value User, ok bool) {
@@ -132,7 +138,9 @@ func (s *State) User(id Snowflake) (value User, ok bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	value, ok = s.users[id]
-	return cloneUser(value), ok
+	value = cloneUser(value)
+	value.bindTo(s.client)
+	return value, ok
 }
 
 func (s *State) Role(guildID, roleID Snowflake) (value Role, ok bool) {
@@ -143,7 +151,9 @@ func (s *State) Role(guildID, roleID Snowflake) (value Role, ok bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	value, ok = s.roles[guildID][roleID]
-	return cloneRole(value), ok
+	value = cloneRole(value)
+	value.bindTo(s.client, guildID)
+	return value, ok
 }
 
 func (s *State) Emoji(guildID, emojiID Snowflake) (value GuildEmoji, ok bool) {
@@ -213,7 +223,9 @@ func (s *State) Message(channelID, messageID Snowflake) (value Message, ok bool)
 		return Message{}, false
 	}
 	value, ok = cache.items[messageID]
-	return cloneMessage(value), ok
+	value = cloneMessage(value)
+	value.bindTo(s.client)
+	return value, ok
 }
 
 func (s *State) Guilds() []Guild {
@@ -243,7 +255,9 @@ func (s *State) Channels() []Channel {
 	defer s.mu.RUnlock()
 	out = make([]Channel, 0, len(s.channels))
 	for _, v := range s.channels {
-		out = append(out, cloneChannel(v))
+		v = cloneChannel(v)
+		v.bindTo(s.client)
+		out = append(out, v)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
@@ -260,7 +274,9 @@ func (s *State) Users() []User {
 	defer s.mu.RUnlock()
 	out = make([]User, 0, len(s.users))
 	for _, v := range s.users {
-		out = append(out, cloneUser(v))
+		v = cloneUser(v)
+		v.bindTo(s.client)
+		out = append(out, v)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
@@ -276,7 +292,9 @@ func (s *State) Members(guildID Snowflake) []Member {
 	defer s.mu.RUnlock()
 	out = make([]Member, 0, len(s.members[guildID]))
 	for _, v := range s.members[guildID] {
-		out = append(out, cloneMember(v))
+		v = cloneMember(v)
+		v.bindTo(s.client, guildID)
+		out = append(out, v)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].User.ID < out[j].User.ID })
 	return out
@@ -292,7 +310,9 @@ func (s *State) Roles(guildID Snowflake) []Role {
 	defer s.mu.RUnlock()
 	out = make([]Role, 0, len(s.roles[guildID]))
 	for _, v := range s.roles[guildID] {
-		out = append(out, cloneRole(v))
+		v = cloneRole(v)
+		v.bindTo(s.client, guildID)
+		out = append(out, v)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Position == out[j].Position {
@@ -394,7 +414,9 @@ func (s *State) Messages(channelID Snowflake) (out []Message) {
 	out = make([]Message, 0, len(cache.order))
 	for _, id := range cache.order {
 		if v, ok := cache.items[id]; ok {
-			out = append(out, cloneMessage(v))
+			v = cloneMessage(v)
+			v.bindTo(s.client)
+			out = append(out, v)
 		}
 	}
 	return out

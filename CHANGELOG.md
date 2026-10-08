@@ -55,6 +55,32 @@ them.
 - `WithMemberChunking` requests the full member list for guilds whose
   GUILD_CREATE was incomplete.
 
+### Values act on themselves
+
+Messages, members, users, channels, roles, and guilds from events, `State`,
+and REST calls know which client they came from:
+
+```go
+a.User.Timeout(10*time.Minute, "spam")
+msg.Reply("done")
+channel.Send("hello")
+user.Send("a direct message")
+```
+
+- `Member`: `Ban`, `Kick`, `Timeout`, `ClearTimeout`, `AddRole`,
+  `RemoveRole`, `SetNick`, `Send`, `CanModerate`, `GuildID`.
+- `Message`: `Reply`, `ReplyComplex`, `Edit`, `Delete`, `React`, `Unreact`,
+  `Pin`, `Unpin`, `Link`.
+- `Channel`: `Send`, `SendComplex`, `Typing`, `Delete`.
+- `User`: `Send`, `SendComplex`. The DM channel is created once and reused.
+- `Role`: `Delete`. `Guild`: `Member`, `Ban`, `Unban`.
+- Each type has `WithContext`. The `Client` methods are unchanged; the new
+  methods call them. A value built by hand returns `ErrUnbound`.
+- `Sendable` and `Mentionable` describe what can receive a message or be
+  mentioned.
+- `Client.FetchMember`, `FetchChannel`, and `FetchGuild` read the cache and
+  fall back to a REST request. `State` lookups never make requests.
+
 ### Shorter commands
 
 - `starlings.Slash(bot, name, description, fn)` takes a handler of the form

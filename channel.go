@@ -57,6 +57,8 @@ type Channel struct {
 	DefaultReaction      *ForumReaction `json:"default_reaction_emoji"`
 	Status               string         `json:"status"`
 	VoiceStartTime       *time.Time     `json:"voice_start_time"`
+
+	ref bound `json:"-"` // the client this value came from
 }
 
 // Mention returns the <#id> form that renders as a channel link.

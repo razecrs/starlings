@@ -46,6 +46,8 @@ type Guild struct {
 	StageInstances       []StageInstance   `json:"stage_instances"`
 	GuildScheduledEvents []ScheduledEvent  `json:"guild_scheduled_events"`
 	SoundboardSounds     []SoundboardSound `json:"soundboard_sounds"`
+
+	ref bound `json:"-"` // the client this value came from
 }
 
 // IconURL returns a CDN link to the guild's icon, or "" if it has none.

@@ -49,6 +49,7 @@ type Client struct {
 	gatewayBase  string
 	initialState *presence
 	chunkMembers bool
+	dms          sync.Map // user ID -> DM channel ID
 	autoDefer    time.Duration
 	extMu        sync.Mutex
 	ext          map[any]any

@@ -81,6 +81,7 @@ type State struct {
 	config StateConfig
 	guard  *Guard
 	selfID Snowflake
+	client *Client // binds returned values; nil for a State used on its own
 
 	guilds        map[Snowflake]Guild
 	loadedGuilds  map[Snowflake]struct{}
@@ -175,6 +176,7 @@ func (c *Client) installStateHandlers() {
 	if c.State == nil {
 		return
 	}
+	c.State.client = c
 	apply := func(event Event) { _ = c.State.Apply(event) }
 	if c.State.Mode() == StateManual {
 		internalOn(c, func(e *UserUpdate) { c.self.Store(&e.User) })
