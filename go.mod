@@ -8,11 +8,11 @@ require (
 	github.com/disgoorg/disgo v0.19.6
 	github.com/disgoorg/snowflake/v2 v2.0.3
 	github.com/go-ole/go-ole v1.3.0
-	github.com/godbus/dbus/v5 v5.2.2
+	github.com/godbus/dbus/v5 v5.2.3
 	github.com/saltosystems/winrt-go v0.0.0-20260513072510-45f10383b2b8
 	github.com/thomas-vilte/dave-go v0.5.1
-	golang.org/x/sys v0.48.0
-	golang.org/x/term v0.46.0
+	golang.org/x/sys v0.49.0
+	golang.org/x/term v0.47.0
 )
 
 require (
