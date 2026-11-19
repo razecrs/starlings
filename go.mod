@@ -1,6 +1,6 @@
 module github.com/razecrs/starlings
 
-go 1.27.0
+go 1.27.4
 
 require (
 	github.com/bwmarrin/discordgo v0.29.0
@@ -20,7 +20,7 @@ require (
 	github.com/disgoorg/json/v2 v2.0.0 // indirect
 	github.com/disgoorg/omit v1.0.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
-	github.com/klauspost/compress v1.18.7 // indirect
+	github.com/klauspost/compress v1.20.2 // indirect
 	github.com/sasha-s/go-csync v0.0.0-20240107134140-fcbab37b09ad // indirect
 	github.com/thomas-vilte/mls-go v1.6.0 // indirect
 	golang.org/x/crypto v0.56.0 // indirect
