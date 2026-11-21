@@ -97,8 +97,13 @@ func newBuiltInSpriteSheet(variant StarPetVariant) *StarlogSpriteSheet {
 	}
 }
 
-// prepare decodes the sheet once, crops each cell to its visible pixels, and
-// keeps a small copy of every frame. The decoded sheet is released afterwards.
+// prepare decodes the sheet once, crops every cell to the same box, and keeps a
+// small copy of every frame. The decoded sheet is released afterwards.
+//
+// The box is the union of all cells' visible pixels, measured from each
+// cell's corner. Cropping each cell to its own pixels instead would scale a
+// frame with an extra mark (a "!" or a "z" beside the pet) smaller than the
+// rest, so the pet would jump between moods.
 func (s *StarlogSpriteSheet) prepare() error {
 	if s == nil {
 		return fmt.Errorf("starlings: nil Starlog sprite sheet")
@@ -121,19 +126,28 @@ func (s *StarlogSpriteSheet) prepare() error {
 		bounds := source.Bounds()
 		cellWidth, cellHeight := bounds.Dx()/s.Columns, bounds.Dy()/s.Rows
 		s.frames = make([]*image.NRGBA, s.Columns*s.Rows)
-		for index := range s.frames {
+		cells := make([]image.Rectangle, len(s.frames))
+		var common image.Rectangle // relative to a cell's corner
+		for index := range cells {
 			x, y := index%s.Columns, index/s.Columns
-			cell := image.Rect(
+			cells[index] = image.Rect(
 				bounds.Min.X+x*cellWidth,
 				bounds.Min.Y+y*cellHeight,
 				bounds.Min.X+(x+1)*cellWidth,
 				bounds.Min.Y+(y+1)*cellHeight,
 			)
-			visible := cropVisibleBounds(source, cell)
+			visible := cropVisibleBounds(source, cells[index])
 			if visible.Empty() {
+				cells[index] = image.Rectangle{}
 				continue
 			}
-			s.frames[index] = shrinkFrame(source, visible, maxWidth)
+			common = common.Union(visible.Sub(cells[index].Min))
+		}
+		for index, cell := range cells {
+			if cell.Empty() {
+				continue
+			}
+			s.frames[index] = shrinkFrame(source, common.Add(cell.Min), maxWidth)
 		}
 	})
 	return s.err
