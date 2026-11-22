@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.2.2
+
+### Fixed
+
+- Star Pets keep the same size and position in every mood. Each sprite-sheet
+  frame was cropped to its own visible pixels, so a frame with a mark beside
+  the pet (a `!`, a `z`, tears) was scaled smaller and the pet jumped between
+  moods. Every frame of a sheet is now cropped to the same box, which also
+  fixes custom sheets made with `NewStarlogSpriteSheet`.
+
+### Changed
+
+- The `voice` package moves to `github.com/disgoorg/disgo` v0.20.0, with
+  `github.com/disgoorg/godave` v0.3.0 for DAVE encryption.
+- Dependencies: `golang.org/x/sys` v0.50.0, `golang.org/x/term` v0.48.0 and
+  `github.com/godbus/dbus/v5` v5.2.4.
+- The benchmark arena's install script no longer assumes one machine's home
+  directory; set `ARENA_GO` to point it at a Go toolchain.
+
 ## v0.2.1
 
 Documentation for the v0.2 APIs. No code changes.
