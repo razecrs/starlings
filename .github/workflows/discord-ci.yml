@@ -1,0 +1,65 @@
+name: Discord CI feed
+
+# Posts the result of every CI and release run on main or a tag to the
+# Discord server's #ci-and-builds channel, through a webhook that can post
+# there and nowhere else.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  post:
+    # Pushes only. Pull request titles and branches come from whoever opened
+    # the pull request, so they never reach the server.
+    if: github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post to #ci-and-builds
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_CI_WEBHOOK }}
+          NAME: ${{ vars.DISCORD_CI_NAME }}
+          AVATAR: ${{ vars.DISCORD_CI_AVATAR }}
+          RUN: ${{ toJSON(github.event.workflow_run) }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "DISCORD_CI_WEBHOOK is not set; nothing to post."
+            exit 0
+          fi
+          conclusion=$(jq -r '.conclusion' <<<"$RUN")
+          case "$conclusion" in
+            success)   title="passed";    mark="✅"; color=5763719 ;;
+            failure)   title="failed";    mark="❌"; color=15548997 ;;
+            cancelled) title="cancelled"; mark="⚪"; color=10070709 ;;
+            skipped)   exit 0 ;;
+            *)         title="$conclusion"; mark="⚠️"; color=16705372 ;;
+          esac
+          started=$(jq -r '.run_started_at' <<<"$RUN")
+          finished=$(jq -r '.updated_at' <<<"$RUN")
+          seconds=$(( $(date -d "$finished" +%s) - $(date -d "$started" +%s) ))
+          duration="$((seconds / 60))m $((seconds % 60))s"
+          payload=$(jq -n --argjson run "$RUN" --arg title "$title" --arg mark "$mark" \
+            --argjson color "$color" --arg duration "$duration" --arg repo "$REPO" \
+            --arg name "$NAME" --arg avatar "$AVATAR" '
+            ($run.head_commit.message // "" | split("\n")[0] | .[0:200]) as $message |
+            {
+              username: (if $name == "" then null else $name end),
+              avatar_url: (if $avatar == "" then null else $avatar end),
+              allowed_mentions: {parse: []},
+              embeds: [{
+                title: "\($mark) \($run.name) \($title)",
+                url: $run.html_url,
+                color: $color,
+                description: "[`\($run.head_sha[0:7])`](https://github.com/\($repo)/commit/\($run.head_sha)) \($message)",
+                fields: [
+                  {name: "Branch", value: ($run.head_branch // "-"), inline: true},
+                  {name: "Run", value: "#\($run.run_number)", inline: true},
+                  {name: "Took", value: $duration, inline: true}
+                ],
+                timestamp: $run.updated_at
+              }]
+            } | with_entries(select(.value != null))')
+          curl --fail --silent --show-error -H "Content-Type: application/json" -d "$payload" "$WEBHOOK"
