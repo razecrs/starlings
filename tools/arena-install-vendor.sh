@@ -11,8 +11,10 @@ download() {
   curl --fail --location --retry 3 --output "$output" "$url"
 }
 
-# Go: use the already-tested native Linux toolchain installed for this WSL user.
-ln -sfn /home/raze/.local/opt/go1.27.1-snap /opt/arena/go
+# Go: link an already-installed Go 1.27 toolchain. ARENA_GO overrides the
+# default, a toolchain under the invoking user's home (this runs under sudo).
+invoking_home=$(getent passwd "${SUDO_USER:-$USER}" | cut -d: -f6)
+ln -sfn "${ARENA_GO:-$invoking_home/.local/opt/go1.27.1-snap}" /opt/arena/go
 
 # Rust stable.
 if [[ ! -x /opt/arena/cargo/bin/rustc ]]; then
